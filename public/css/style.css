@@ -1,0 +1,26 @@
+body {
+    font-family: sans-serif;
+    margin: 2rem;
+    max-width: 900px;
+  }
+  
+  header {
+    margin-bottom: 2rem;
+  }
+  
+  select {
+    margin: 0 1rem 1rem 0;
+    padding: 0.4rem;
+  }
+  
+  .lesson-top {
+    border-bottom: 1px solid #ddd;
+    margin-bottom: 1rem;
+  }
+  
+  .lesson-body {
+    padding: 1rem;
+    border: 1px solid #ddd;
+    background: #fefefe;
+  }
+  

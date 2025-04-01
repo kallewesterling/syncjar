@@ -1,0 +1,25 @@
+{
+  "name": "test-local-skilljar",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "pull:skilljar": "node scripts/sync-skilljar-to-local.mjs",
+    "generate:courses": "node scripts/generate-courses-json.mjs",
+    "sync:push": "node scripts/sync-local-to-skilljar.mjs",
+    "build:preview": "npm run pull:skilljar && npm run generate:courses"
+  },
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "axios": "^1.8.4",
+    "chalk": "^5.4.1",
+    "diff": "^7.0.0",
+    "dotenv": "^16.4.7",
+    "fs-extra": "^11.3.0",
+    "inquirer": "^12.5.0",
+    "yargs": "^17.7.2"
+  },
+  "type": "module"
+}
