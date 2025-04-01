@@ -148,18 +148,18 @@ This repo does **not** track course content directly. To use it:
 
    ```bash
    git clone git@github.com:<YOUR-ORG>/<YOUR-COURSE-CONTENT-REPO>.git ~/courses
-  ```
+   ```
 
 2. Add to the `.env` file in this repo:
 
-  ```
-  COURSE_CONTENT_PATH=../courses
-  ```
+   ```
+   COURSE_CONTENT_PATH=../courses
+   ```
 
 3. Then run:
 
-  ```bash
-  npm run build:preview
-  ```
+   ```bash
+   npm run build:preview
+   ```
 
 This keeps your course content private and portable across environments.
