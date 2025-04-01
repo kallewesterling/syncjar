@@ -6,6 +6,10 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Load Skilljar auth
+import dotenv from 'dotenv';
+dotenv.config();
+
 function slugify(text) {
   return text
     .toString()
@@ -16,13 +20,13 @@ function slugify(text) {
 }
 
 async function generateCoursesJson() {
-  const exportedDir = path.join(__dirname, '..', 'local-skilljar');
+  const exportedDir = process.env.COURSE_CONTENT_PATH || path.join(__dirname, '..', 'local-skilljar');
   const outputPath = path.join(__dirname, '..', 'public', 'data', 'courses.json');
   const publicCoursesDir = path.join(__dirname, '..', 'public', 'courses');
 
   const courseDirs = await fs.readdir(exportedDir);
   const courseIndex = {};
-
+  
   for (const courseSlug of courseDirs) {
     const coursePath = path.join(exportedDir, courseSlug);
     const detailsPath = path.join(coursePath, 'details.json');

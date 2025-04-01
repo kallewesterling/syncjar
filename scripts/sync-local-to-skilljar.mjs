@@ -40,7 +40,7 @@ function normalizeHtml(html = '') {
 }
 
 async function syncCourse(courseFolder) {
-  const courseDir = path.join(__dirname, '..', 'local-skilljar', courseFolder);
+  const courseDir = path.join(process.env.COURSE_CONTENT_PATH, courseFolder) || path.join(__dirname, '..', 'local-skilljar', courseFolder);
   const detailsPath = path.join(courseDir, 'details.json');
   const lessonsMetaPath = path.join(courseDir, 'lessons-meta.json');
 
@@ -133,7 +133,7 @@ async function syncCourse(courseFolder) {
 
 // MAIN
 (async () => {
-  const coursesDir = path.join(__dirname, '..', 'local-skilljar');
+  const coursesDir = process.env.COURSE_CONTENT_PATH || path.join(__dirname, '..', 'local-skilljar');
   const courseFolders = argv.course
     ? [argv.course]
     : await fs.readdir(coursesDir);

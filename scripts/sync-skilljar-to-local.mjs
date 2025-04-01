@@ -71,7 +71,7 @@ async function fetchContentItems(lessonId) {
 
 async function syncCourse(course) {
   const slug = slugify(course.title);
-  const exportDir = path.join(__dirname, '..', 'local-skilljar', slug);
+  const exportDir = path.join(process.env.COURSE_CONTENT_PATH, slug) || path.join(__dirname, '..', 'local-skilljar', slug);
   const lessonsDir = path.join(exportDir, 'lessons');
 
   console.log(`📦 Syncing course: ${course.title}`);
