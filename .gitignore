@@ -1,0 +1,13 @@
+# app setup
+.env
+node_modules
+
+# HTML data
+public/courses
+public/data
+
+# local sync folder
+local-skilljar
+
+# OS stuff
+.DS_Store
