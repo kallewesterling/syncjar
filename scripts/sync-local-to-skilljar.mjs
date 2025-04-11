@@ -20,6 +20,11 @@ const argv = yargs(hideBin(process.argv))
   .option('force', { type: 'boolean', describe: 'Sync all changes without prompting' })
   .option('diff-only', { type: 'boolean', describe: 'Only show diffs, do not sync' })
   .option('diff', { type: 'boolean', default: true, describe: 'Show diffs before syncing' })
+  .option('add-last-updated', {
+    type: 'boolean',
+    default: false,
+    describe: 'If set, updates the lesson description_html with today\'s date'
+  })
   .help()
   .argv;
 
@@ -123,6 +128,21 @@ async function syncCourse(courseFolder) {
           type: 'HTML'
         });
         console.log(chalk.green(`✅ Updated content-item ${item.id}`));
+
+        if (argv['add-last-updated']) {
+          const today = new Date().toLocaleDateString('en-US', {
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric',
+            timeZone: 'UTC'
+          });
+
+          await client.patch(`/lessons/${lesson.id}`, {
+            description_html: `<p>Last updated: ${today}.</p>`
+          });
+
+          console.log(chalk.cyan(`📝 Updated lesson metadata with 'Last updated: ${today}'`));
+        }
       } else {
         console.log(chalk.gray(`⏭️ Skipped content-item ${item.id}`));
       }
