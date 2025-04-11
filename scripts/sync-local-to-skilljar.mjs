@@ -137,9 +137,13 @@ async function syncCourse(courseFolder) {
             timeZone: 'UTC'
           });
 
+          const newDescription = `<p>Last updated: ${today}.</p>`;
+
           await client.patch(`/lessons/${lesson.id}`, {
-            description_html: `<p>Last updated: ${today}.</p>`
+            description_html: newDescription
           });
+
+          lesson.description_html = newDescription; // 🔥 update in-memory object
 
           console.log(chalk.cyan(`📝 Updated lesson metadata with 'Last updated: ${today}'`));
         }
@@ -148,6 +152,11 @@ async function syncCourse(courseFolder) {
       }
 
     }
+  }
+
+  if (argv['add-last-updated']) {
+    await fs.outputJson(lessonsMetaPath, lessons, { spaces: 2 });
+    console.log(chalk.gray(`📁 Updated lessons-meta.json to reflect updated metadata.`));
   }
 }
 
