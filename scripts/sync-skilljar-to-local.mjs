@@ -111,6 +111,7 @@ async function syncCourse(course) {
       slug: lessonSlug,
       title: lesson.title,
       order: lesson.order,
+      description_html: lesson.description_html || '',
       content_items: contentItemsMeta
     });
   }
