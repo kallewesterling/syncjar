@@ -95,7 +95,7 @@ npm run build:preview
 Runs:
 
 ```
-npm run pull:skilljar
+npm run pull
 npm run generate:courses
 ```
 
@@ -118,26 +118,26 @@ npx serve public
 ### 📤 Push changes upstream (local → Skilljar)
 
 ```bash
-npm run sync:push
+npm run push
 ```
 
 With options:
 
 ```bash
 # Dry run with diffs
-npm run sync:push -- --dry-run
+npm run push -- --dry-run
 
 # Push a specific lesson
-npm run sync:push -- --course This-Is-My-Course-Title --lesson 03-wrap-up
+npm run push -- --course This-Is-My-Course-Title --lesson 03-wrap-up
 
 # Show diffs only (no syncing)
-npm run sync:push -- --diff-only
+npm run push -- --diff-only
 
 # Push everything without prompting
-npm run sync:push -- --force
+npm run push -- --force
 
 # Push without showing diffs
-npm run sync:push -- --no-diff
+npm run push -- --no-diff
 ```
 
 ## 🔒 Connect to Your Course Content
