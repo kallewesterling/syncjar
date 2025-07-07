@@ -6,6 +6,9 @@ node_modules
 public/courses
 public/data
 
+# Plaintext data
+course-plaintext
+
 # local sync folder
 local-skilljar
 
