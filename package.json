@@ -8,7 +8,11 @@
     "push": "node scripts/sync-local-to-skilljar.mjs",
     "generate:courses": "node scripts/generate-courses-json.mjs",
     "build:preview": "npm run pull && npm run generate:courses",
-    "export:plaintext": "node scripts/export-courses-to-md.mjs"
+    "export:plaintext": "node scripts/export-courses-to-md.mjs",
+    "export:users": "node scripts/export-users-to-csv.mjs",
+    "export:metrics": "node scripts/metrics-to-csv.mjs",
+    "check:links": "node scripts/check-links.mjs",
+    "sync:users": "node scripts/sync-users.mjs"
 },
   "author": "",
   "license": "ISC",

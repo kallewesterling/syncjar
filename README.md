@@ -47,6 +47,11 @@ It's your local **Skilljar workspace**: Write content, test changes, see diffs, 
 │   ├── sync-skilljar-to-local.mjs   # Pull from Skilljar
 │   ├── sync-local-to-skilljar.mjs   # Push to Skilljar (with diffing)
 │   ├── generate-courses-json.mjs    # Create preview course index
+│   ├── export-courses-to-md.mjs     # Export course content as Markdown
+│   ├── export-users-to-csv.mjs      # Export Skilljar users to CSV
+│   ├── metrics-to-csv.mjs           # Export course metrics to CSV
+│   ├── check-links.mjs              # Check for broken links in content
+│   ├── sync-users.mjs               # Sync user data from Skilljar
 │
 ├── .env                             # API key
 └── README.md
@@ -74,12 +79,27 @@ SKILLJAR_API_KEY=sk-live-abc123
 npm run build:preview
 ```
 
+## 📋 Available Commands
+
+| Command | Description |
+|---|---|
+| `npm run pull` | Pull all courses from Skilljar to local files |
+| `npm run pull -- --course <slug>` | Pull a single course (partial name match) |
+| `npm run push` | Push local edits back to Skilljar (with diffs + prompts) |
+| `npm run generate:courses` | Regenerate the local preview index |
+| `npm run build:preview` | Pull + generate (full refresh) |
+| `npm run export:plaintext` | Export course content as Markdown |
+| `npm run export:users` | Export Skilljar users to CSV |
+| `npm run export:metrics` | Export course metrics to CSV |
+| `npm run check:links` | Check for broken links in course content |
+| `npm run sync:users` | Sync user data from Skilljar |
+
 ## 🔁 Sync Local Edits Back to Skilljar
 
 After editing any content file in `local-skilljar/<course>/lessons/<lesson>/content-<content_item_id>.html`, run:
 
 ```bash
-npm run sync:push
+npm run push
 ```
 
 This will show diffs and prompt before updating content upstream.
