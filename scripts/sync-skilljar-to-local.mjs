@@ -5,6 +5,7 @@ import axios from 'axios';
 import dotenv from 'dotenv';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
+import chalk from 'chalk';
 
 dotenv.config();
 
@@ -36,6 +37,62 @@ function slugify(text) {
     .replace(/[^\w\s-]/g, '')
     .trim()
     .replace(/\s+/g, '-');
+}
+
+const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+
+class SyncTable {
+  constructor(courses) {
+    this.rows = courses.map(c => ({ title: c.title, status: 'pending', lessons: null, frame: 0 }));
+    this.titleWidth = Math.max(...courses.map(c => c.title.length), 'Course'.length);
+    this._interval = null;
+  }
+
+  _renderRow(row) {
+    const lessonStr = row.lessons !== null ? String(row.lessons) : '-';
+    if (row.status === 'done') {
+      return `  ${chalk.green('✓')}  ${row.title.padEnd(this.titleWidth)}  ${lessonStr.padStart(7)}`;
+    }
+    if (row.status === 'syncing') {
+      const frame = chalk.yellow(SPINNER_FRAMES[row.frame % SPINNER_FRAMES.length]);
+      return `  ${frame}  ${chalk.yellow(row.title.padEnd(this.titleWidth))}  ${lessonStr.padStart(7)}`;
+    }
+    return `  ${chalk.gray('·')}  ${chalk.gray(row.title.padEnd(this.titleWidth))}  ${lessonStr.padStart(7)}`;
+  }
+
+  _draw(initial = false) {
+    const totalLines = this.rows.length + 2;
+    if (!initial) process.stdout.write(`\x1B[${totalLines}A`);
+    process.stdout.write(`\x1B[2K  ${chalk.bold('   ' + 'Course'.padEnd(this.titleWidth))}  ${chalk.bold('Lessons')}\n`);
+    process.stdout.write(`\x1B[2K  ${'─'.repeat(this.titleWidth + 12)}\n`);
+    for (const row of this.rows) {
+      process.stdout.write(`\x1B[2K${this._renderRow(row)}\n`);
+    }
+  }
+
+  start() {
+    this._draw(true);
+    this._interval = setInterval(() => {
+      for (const row of this.rows) {
+        if (row.status === 'syncing') row.frame++;
+      }
+      this._draw();
+    }, 80);
+  }
+
+  setStarted(title) {
+    const row = this.rows.find(r => r.title === title);
+    if (row) row.status = 'syncing';
+  }
+
+  setDone(title, lessons) {
+    const row = this.rows.find(r => r.title === title);
+    if (row) { row.status = 'done'; row.lessons = lessons; }
+    if (this.rows.every(r => r.status === 'done')) {
+      clearInterval(this._interval);
+      this._draw();
+    }
+  }
 }
 
 // Fetch paginated courses
@@ -88,10 +145,11 @@ async function withConcurrency(items, limit, fn) {
   return Promise.allSettled([...executing]);
 }
 
-async function syncCourse(course, progress) {
+async function syncCourse(course, table) {
   const slug = slugify(course.title);
   const exportDir = path.join(process.env.COURSE_CONTENT_PATH, slug) || path.join(__dirname, '..', 'local-skilljar', slug);
   const lessonsDir = path.join(exportDir, 'lessons');
+  table.setStarted(course.title);
 
   const [lessons] = await Promise.all([
     fetchLessons(course.id),
@@ -128,10 +186,7 @@ async function syncCourse(course, progress) {
   }));
 
   await fs.outputJson(path.join(exportDir, 'lessons-meta.json'), lessonMetaList, { spaces: 2 });
-
-  const done = ++progress.done;
-  const width = progress.total.toString().length;
-  console.log(`[${done.toString().padStart(width)}/${progress.total}] ✅ ${course.title} (${lessons.length} lessons)`);
+  table.setDone(course.title, lessons.length);
 }
 
 // MAIN
@@ -150,10 +205,10 @@ async function syncCourse(course, progress) {
     }
   }
 
-  const progress = { done: 0, total: courses.length };
-  console.log(`Syncing ${courses.length} course${courses.length === 1 ? '' : 's'}...\n`);
+  const table = new SyncTable(courses);
+  table.start();
 
-  await withConcurrency(courses, 3, course => syncCourse(course, progress));
+  await withConcurrency(courses, 3, course => syncCourse(course, table));
 
-  console.log('\n🎉 All courses synced.');
+  process.stdout.write('\n🎉 All courses synced.\n');
 })();
