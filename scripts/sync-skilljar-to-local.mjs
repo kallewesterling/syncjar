@@ -212,6 +212,18 @@ async function syncCourse(course, table) {
 (async () => {
   let courses = await fetchCourses();
 
+  // Deduplicate by slug — the API sometimes returns two courses with the same
+  // title (different IDs). Keep the most recently modified of each pair.
+  const bySlug = new Map();
+  for (const c of courses) {
+    const slug = slugify(c.title);
+    const existing = bySlug.get(slug);
+    if (!existing || new Date(c.modified_at) > new Date(existing.modified_at)) {
+      bySlug.set(slug, c);
+    }
+  }
+  courses = [...bySlug.values()];
+
   // Most recently updated first
   courses.sort((a, b) => new Date(b.modified_at) - new Date(a.modified_at));
 
