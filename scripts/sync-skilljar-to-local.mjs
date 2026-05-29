@@ -134,7 +134,7 @@ async function syncCourse(course) {
   let courses = await fetchCourses();
 
   // Most recently updated first
-  courses.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+  courses.sort((a, b) => new Date(b.modified_at) - new Date(a.modified_at));
 
   if (argv.course) {
     const filter = argv.course.toLowerCase();
