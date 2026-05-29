@@ -8,6 +8,7 @@
     "push": "node scripts/sync-local-to-skilljar.mjs",
     "generate:courses": "node scripts/generate-courses-json.mjs",
     "build:preview": "npm run pull && npm run generate:courses",
+    "serve": "node scripts/serve.mjs",
     "export:plaintext": "node scripts/export-courses-to-md.mjs",
     "export:users": "node scripts/export-users-to-csv.mjs",
     "export:metrics": "node scripts/metrics-to-csv.mjs",
