@@ -88,6 +88,7 @@ npm run build:preview
 | `npm run push` | Push local edits back to Skilljar (with diffs + prompts) |
 | `npm run generate:courses` | Regenerate the local preview index |
 | `npm run build:preview` | Pull + generate (full refresh) |
+| `npm run serve` | Start the local preview server at http://localhost:3000 |
 | `npm run export:plaintext` | Export course content as Markdown |
 | `npm run export:users` | Export Skilljar users to CSV |
 | `npm run export:metrics` | Export course metrics to CSV |
@@ -132,8 +133,29 @@ npm run generate:courses
 Then you can preview the content:
 
 ```bash
-npx serve public
+npm run serve
 ```
+
+This starts a local server at [http://localhost:3000](http://localhost:3000). Each lesson is rendered inside an iframe as a full HTML document, so Skilljar theme styles and scripts are applied accurately.
+
+## 🎨 Theming
+
+Add your Skilljar theme CSS and JS URLs to `preview.config.json` at the project root:
+
+```json
+{
+  "theme": {
+    "css": [
+      "https://your-skilljar-domain.com/path/to/theme.css"
+    ],
+    "js": [
+      "https://your-skilljar-domain.com/path/to/theme.js"
+    ]
+  }
+}
+```
+
+The preview server injects these into each lesson iframe at render time. Leave the arrays empty to preview unstyled content. You may want to add `preview.config.json` to `.gitignore` if it contains internal URLs.
 
 ### 📤 Push changes upstream (local → Skilljar)
 

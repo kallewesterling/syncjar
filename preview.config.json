@@ -1,0 +1,10 @@
+{
+  "baseURL": "https://courses.chainguard.dev",
+  "theme": {
+    "css": [
+      "https://storage.googleapis.com/chainguard-courses-theme/dist/bundle.min.css",
+      "https://courses.chainguard.dev/theme/1qz7kj58l2sj7.css?v=4&mtime=1777397848&theme_version=2"
+    ],
+    "js": []
+  }
+}
