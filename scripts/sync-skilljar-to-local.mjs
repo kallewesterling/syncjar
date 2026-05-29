@@ -131,7 +131,9 @@ async function fetchLessons(courseId) {
 }
 
 async function fetchContentItems(lessonId) {
-  const { data } = await client.get(`/lessons/${lessonId}/content-items`);
+  const { data } = await client.get(`/lessons/${lessonId}/content-items`, {
+    params: { include_content: true }
+  });
   return data.results || [];
 }
 
@@ -165,15 +167,32 @@ async function syncCourse(course, table) {
       fs.ensureDir(lessonFolder)
     ]);
 
+    // Write files for items that have HTML content from the API
     const contentItemsMeta = await Promise.all(
       contentItems.filter(i => i.content_html).map(async (item) => {
         const prefix = slugify(item.header) || 'content';
         const filename = `${prefix}-${item.id}.html`;
         const relPath = path.join('lessons', lessonSlug, filename);
-        await fs.outputFile(path.join(exportDir, relPath), item.content_html || '');
+        await fs.outputFile(path.join(exportDir, relPath), item.content_html);
         return { id: item.id, file: relPath, order: item.order };
       })
     );
+
+    // Reconcile: include any HTML files on disk not covered by the API response
+    // (can happen when content items are replaced in Skilljar, leaving orphaned files)
+    const trackedFiles = new Set(contentItemsMeta.map(i => path.basename(i.file)));
+    let diskFiles = [];
+    try {
+      diskFiles = (await fs.readdir(lessonFolder))
+        .filter(f => f.endsWith('.html') && !trackedFiles.has(f))
+        .sort();
+    } catch { /* folder missing */ }
+
+    const diskOnlyMeta = diskFiles.map((f, idx) => ({
+      id: null,
+      file: path.join('lessons', lessonSlug, f),
+      order: (contentItemsMeta.length + idx + 1) * 10
+    }));
 
     return {
       id: lesson.id,
@@ -181,7 +200,7 @@ async function syncCourse(course, table) {
       title: lesson.title,
       order: lesson.order,
       description_html: lesson.description_html || '',
-      content_items: contentItemsMeta
+      content_items: [...contentItemsMeta, ...diskOnlyMeta]
     };
   }));
 
