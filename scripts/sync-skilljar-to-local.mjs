@@ -3,8 +3,17 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import axios from 'axios';
 import dotenv from 'dotenv';
+import yargs from 'yargs';
+import { hideBin } from 'yargs/helpers';
 
 dotenv.config();
+
+const argv = yargs(hideBin(process.argv))
+  .option('course', {
+    type: 'string',
+    description: 'Only sync the course matching this slug (partial match, case-insensitive)'
+  })
+  .argv;
 
 // ESM __dirname workaround
 const __filename = fileURLToPath(import.meta.url);
@@ -122,7 +131,19 @@ async function syncCourse(course) {
 
 // MAIN
 (async () => {
-  const courses = await fetchCourses();
+  let courses = await fetchCourses();
+
+  // Most recently updated first
+  courses.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+
+  if (argv.course) {
+    const filter = argv.course.toLowerCase();
+    courses = courses.filter(c => slugify(c.title).toLowerCase().includes(filter));
+    if (courses.length === 0) {
+      console.error(`No courses matched --course "${argv.course}"`);
+      process.exit(1);
+    }
+  }
 
   for (const course of courses) {
     await syncCourse(course);
