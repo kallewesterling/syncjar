@@ -78,55 +78,60 @@ async function fetchContentItems(lessonId) {
   return data.results || [];
 }
 
-async function syncCourse(course) {
+async function withConcurrency(items, limit, fn) {
+  const executing = new Set();
+  for (const item of items) {
+    const p = fn(item).finally(() => executing.delete(p));
+    executing.add(p);
+    if (executing.size >= limit) await Promise.race(executing);
+  }
+  return Promise.allSettled([...executing]);
+}
+
+async function syncCourse(course, progress) {
   const slug = slugify(course.title);
   const exportDir = path.join(process.env.COURSE_CONTENT_PATH, slug) || path.join(__dirname, '..', 'local-skilljar', slug);
   const lessonsDir = path.join(exportDir, 'lessons');
 
-  console.log(`📦 Syncing course: ${course.title}`);
+  const [lessons] = await Promise.all([
+    fetchLessons(course.id),
+    fs.outputJson(path.join(exportDir, 'details.json'), course, { spaces: 2 })
+  ]);
 
-  // Write course details
-  await fs.outputJson(path.join(exportDir, 'details.json'), course, { spaces: 2 });
-
-  // Fetch lessons
-  const lessons = await fetchLessons(course.id);
-  const lessonMetaList = [];
-
-  for (const lesson of lessons) {
+  const lessonMetaList = await Promise.all(lessons.map(async (lesson) => {
     const lessonSlug = `${lesson.order.toString().padStart(2, '0')}-${slugify(lesson.title)}`;
     const lessonFolder = path.join(lessonsDir, lessonSlug);
-    await fs.ensureDir(lessonFolder);
 
-    const contentItems = await fetchContentItems(lesson.id);
-    const contentItemsMeta = [];
+    const [contentItems] = await Promise.all([
+      fetchContentItems(lesson.id),
+      fs.ensureDir(lessonFolder)
+    ]);
 
-    for (const item of contentItems.filter(i => i.content_html)) {
-      const prefix = slugify(item.header) || "content"
-      const filename = `${prefix}-${item.id}.html`;
-      const relPath = path.join('lessons', lessonSlug, filename);
-      const fullPath = path.join(exportDir, relPath);
+    const contentItemsMeta = await Promise.all(
+      contentItems.filter(i => i.content_html).map(async (item) => {
+        const prefix = slugify(item.header) || 'content';
+        const filename = `${prefix}-${item.id}.html`;
+        const relPath = path.join('lessons', lessonSlug, filename);
+        await fs.outputFile(path.join(exportDir, relPath), item.content_html || '');
+        return { id: item.id, file: relPath, order: item.order };
+      })
+    );
 
-      await fs.outputFile(fullPath, item.content_html || '');
-
-      contentItemsMeta.push({
-        id: item.id,
-        file: relPath,
-        order: item.order
-      });
-    }
-
-    lessonMetaList.push({
+    return {
       id: lesson.id,
       slug: lessonSlug,
       title: lesson.title,
       order: lesson.order,
       description_html: lesson.description_html || '',
       content_items: contentItemsMeta
-    });
-  }
+    };
+  }));
 
   await fs.outputJson(path.join(exportDir, 'lessons-meta.json'), lessonMetaList, { spaces: 2 });
-  console.log(`✅ Done: ${course.title} (${lessons.length} lessons)\n`);
+
+  const done = ++progress.done;
+  const width = progress.total.toString().length;
+  console.log(`[${done.toString().padStart(width)}/${progress.total}] ✅ ${course.title} (${lessons.length} lessons)`);
 }
 
 // MAIN
@@ -145,9 +150,10 @@ async function syncCourse(course) {
     }
   }
 
-  for (const course of courses) {
-    await syncCourse(course);
-  }
+  const progress = { done: 0, total: courses.length };
+  console.log(`Syncing ${courses.length} course${courses.length === 1 ? '' : 's'}...\n`);
 
-  console.log('🎉 All courses synced locally.');
+  await withConcurrency(courses, 3, course => syncCourse(course, progress));
+
+  console.log('\n🎉 All courses synced.');
 })();
