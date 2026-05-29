@@ -82,7 +82,7 @@ async function loadLesson(lessonTitle, courseName) {
 
 function populateCourseDropdown() {
   courseSelector.innerHTML = '';
-  for (const courseName of Object.keys(courseData)) {
+  for (const courseName of Object.keys(courseData).sort()) {
     const option = document.createElement('option');
     option.value = courseName;
     option.textContent = courseName;
