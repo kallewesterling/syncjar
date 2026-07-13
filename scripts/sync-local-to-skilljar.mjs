@@ -1,7 +1,6 @@
 import fs from 'fs-extra';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import axios from 'axios';
 import { diffLines } from 'diff';
 import chalk from 'chalk';
 import inquirer from 'inquirer';
@@ -30,15 +29,11 @@ const argv = yargs(hideBin(process.argv))
 
 // Load Skilljar auth
 import dotenv from 'dotenv';
+import { createSkilljarClient } from './skilljar-client.mjs';
 dotenv.config();
 
-const client = axios.create({
-  baseURL: 'https://api.skilljar.com/v1',
-  auth: {
-    username: process.env.SKILLJAR_API_KEY,
-    password: ''
-  }
-});
+// Auto-retries on 429/5xx, honouring the server's Retry-After header.
+const client = createSkilljarClient();
 
 function normalizeHtml(html = '') {
   return html.trim().replace(/\s+/g, ' ');

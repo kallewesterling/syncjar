@@ -1,10 +1,10 @@
 import fs from 'fs-extra';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import axios from 'axios';
 import dotenv from 'dotenv';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
+import { createSkilljarClient } from './skilljar-client.mjs';
 
 dotenv.config();
 
@@ -18,13 +18,8 @@ const argv = yargs(hideBin(process.argv))
   .help()
   .argv;
 
-const client = axios.create({
-  baseURL: 'https://api.skilljar.com/v1',
-  auth: {
-    username: process.env.SKILLJAR_API_KEY,
-    password: ''
-  }
-});
+// Auto-retries on 429/5xx, honouring the server's Retry-After header.
+const client = createSkilljarClient();
 
 const outputDir = path.join(__dirname, '..', 'public', 'data');
 const userListPath = path.join(outputDir, 'users.json');
