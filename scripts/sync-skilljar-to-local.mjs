@@ -1,11 +1,11 @@
 import fs from 'fs-extra';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import axios from 'axios';
 import dotenv from 'dotenv';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import chalk from 'chalk';
+import { createSkilljarClient } from './skilljar-client.mjs';
 
 dotenv.config();
 
@@ -20,14 +20,8 @@ const argv = yargs(hideBin(process.argv))
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Axios client for Skilljar
-const client = axios.create({
-  baseURL: 'https://api.skilljar.com/v1',
-  auth: {
-    username: process.env.SKILLJAR_API_KEY,
-    password: ''
-  }
-});
+// Axios client for Skilljar (auto-retries on 429/5xx, honouring Retry-After)
+const client = createSkilljarClient();
 
 // Slugify helper
 function slugify(text) {
@@ -147,6 +141,26 @@ async function withConcurrency(items, limit, fn) {
   return Promise.allSettled([...executing]);
 }
 
+// Like items.map(fn) with Promise.all, but bounds how many run at once and
+// preserves result order. Keeps us from firing hundreds of content-item
+// requests in a single burst (which is what trips Skilljar's rate limit).
+async function mapWithConcurrency(items, limit, fn) {
+  const results = new Array(items.length);
+  let next = 0;
+  async function worker() {
+    while (next < items.length) {
+      const idx = next++;
+      results[idx] = await fn(items[idx], idx);
+    }
+  }
+  const workers = Array.from({ length: Math.min(limit, items.length) }, worker);
+  await Promise.all(workers);
+  return results;
+}
+
+// Max content-item requests in flight per course at any moment.
+const LESSON_CONCURRENCY = 4;
+
 async function syncCourse(course, table) {
   const slug = slugify(course.title);
   const exportDir = path.join(process.env.COURSE_CONTENT_PATH, slug) || path.join(__dirname, '..', 'local-skilljar', slug);
@@ -158,7 +172,7 @@ async function syncCourse(course, table) {
     fs.outputJson(path.join(exportDir, 'details.json'), course, { spaces: 2 })
   ]);
 
-  const lessonMetaList = await Promise.all(lessons.map(async (lesson) => {
+  const lessonMetaList = await mapWithConcurrency(lessons, LESSON_CONCURRENCY, async (lesson) => {
     const lessonSlug = `${lesson.order.toString().padStart(2, '0')}-${slugify(lesson.title)}`;
     const lessonFolder = path.join(lessonsDir, lessonSlug);
 
@@ -202,7 +216,7 @@ async function syncCourse(course, table) {
       description_html: lesson.description_html || '',
       content_items: [...contentItemsMeta, ...diskOnlyMeta]
     };
-  }));
+  });
 
   await fs.outputJson(path.join(exportDir, 'lessons-meta.json'), lessonMetaList, { spaces: 2 });
   table.setDone(course.title, lessons.length);
