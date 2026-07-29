@@ -5,6 +5,7 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "pull": "node scripts/sync-skilljar-to-local.mjs",
+    "pull:slugs": "node scripts/pull-slugs.mjs",
     "push": "node scripts/sync-local-to-skilljar.mjs",
     "generate:courses": "node scripts/generate-courses-json.mjs",
     "build:preview": "npm run pull && npm run generate:courses",
