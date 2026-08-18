@@ -16,7 +16,8 @@ const argv = yargs(hideBin(process.argv))
   .option('course', { type: 'string', describe: 'Course folder slug to sync' })
   .option('lesson', { type: 'string', describe: 'Lesson slug to sync' })
   .option('dry-run', { type: 'boolean', describe: 'Preview changes without syncing' })
-  .option('force', { type: 'boolean', describe: 'Sync all changes without prompting' })
+  .option('force', { type: 'boolean', describe: 'Sync content-item changes without prompting' })
+  .option('force-titles', { type: 'boolean', describe: 'Sync course/lesson title changes without prompting (separate from --force)' })
   .option('diff-only', { type: 'boolean', describe: 'Only show diffs, do not sync' })
   .option('diff', { type: 'boolean', default: true, describe: 'Show diffs before syncing' })
   .option('add-last-updated', {
@@ -39,6 +40,72 @@ function normalizeHtml(html = '') {
   return html.trim().replace(/\s+/g, ' ');
 }
 
+// Prints a diffLines() result the same way for every field we sync: one
+// +/-/space prefixed line per part. diffLines() only includes a trailing
+// newline in `part.value` when the source text had one, which is always true
+// for multi-line HTML but never for single-line fields like a title — so we
+// add it back here to keep single-line diffs from being smashed onto one row.
+function printDiff(oldValue, newValue) {
+  const diff = diffLines(oldValue || '', newValue || '');
+  for (const part of diff) {
+    const symbol = part.added ? '+' : part.removed ? '-' : ' ';
+    const color = part.added ? chalk.green : part.removed ? chalk.red : chalk.gray;
+    const text = part.value.endsWith('\n') ? part.value : `${part.value}\n`;
+    process.stdout.write(color(`${symbol} ${text}`));
+  }
+}
+
+// Diffs a plain text field (e.g. a title) against its upstream value and,
+// depending on the --diff/--diff-only/--dry-run/--force-titles flags, prompts
+// before PATCHing `endpoint` with `{ [field]: localValue }`. Titles use their
+// own --force-titles flag rather than --force, since a title is more visible
+// and consequential than a content-item HTML tweak and warrants a separate,
+// explicit opt-in out of unprompted pushes.
+async function syncTextField({ label, endpoint, field, localValue, upstreamValue }) {
+  if ((localValue || '').trim() === (upstreamValue || '').trim()) {
+    console.log(`✅ ${label} is in sync.`);
+    return;
+  }
+
+  console.log(`❗ Difference detected in ${chalk.yellow(label)}`);
+
+  if (argv.diff) {
+    console.log(chalk.gray('📄 Showing unified diff:\n'));
+    printDiff(upstreamValue, localValue);
+    console.log(); // newline
+  }
+
+  if (argv['diff-only']) {
+    console.log(chalk.gray(`🔍 DIFF ONLY: Skipping ${label}\n`));
+    return;
+  }
+
+  if (argv['dry-run']) {
+    console.log(chalk.gray(`🔍 DRY RUN: Would update ${label}\n`));
+    return;
+  }
+
+  let shouldUpdate = argv['force-titles'];
+  if (!shouldUpdate) {
+    const answer = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'confirm',
+        message: `Push local change to ${label}? ("${upstreamValue}" → "${localValue}")`,
+        default: false
+      }
+    ]);
+    shouldUpdate = answer.confirm;
+  }
+
+  if (shouldUpdate) {
+    await client.patch(endpoint, { [field]: localValue });
+    console.log(chalk.green(`✅ Updated ${label}`));
+  } else {
+    console.log(chalk.gray(`⏭️ Skipped ${label}`));
+  }
+}
+
 async function syncCourse(courseFolder) {
   const courseDir = path.join(process.env.COURSE_CONTENT_PATH, courseFolder) || path.join(__dirname, '..', 'local-skilljar', courseFolder);
   const detailsPath = path.join(courseDir, 'details.json');
@@ -52,10 +119,30 @@ async function syncCourse(courseFolder) {
   const courseDetails = await fs.readJson(detailsPath);
   const lessons = await fs.readJson(lessonsMetaPath);
 
+  if (!argv.lesson) {
+    const { data: upstreamCourse } = await client.get(`/courses/${courseDetails.id}`);
+    await syncTextField({
+      label: `course title (${courseDetails.title})`,
+      endpoint: `/courses/${courseDetails.id}`,
+      field: 'title',
+      localValue: courseDetails.title,
+      upstreamValue: upstreamCourse.title
+    });
+  }
+
   for (const lesson of lessons) {
     if (argv.lesson && lesson.slug !== argv.lesson) continue;
 
     console.log(`\n📘 Lesson: ${chalk.bold(courseDetails.title)} ${chalk.cyan(lesson.title)}`);
+
+    const { data: upstreamLesson } = await client.get(`/lessons/${lesson.id}`);
+    await syncTextField({
+      label: `lesson title (${lesson.title})`,
+      endpoint: `/lessons/${lesson.id}`,
+      field: 'title',
+      localValue: lesson.title,
+      upstreamValue: upstreamLesson.title
+    });
 
     for (const item of lesson.content_items) {
       const localPath = path.join(courseDir, item.file);
@@ -76,20 +163,7 @@ async function syncCourse(courseFolder) {
 
       if (argv.diff) {
         console.log(chalk.gray('📄 Showing unified diff:\n'));
-
-        const diff = diffLines(upstreamItem.content_html || '', localHtml || '');
-
-        for (const part of diff) {
-          const symbol = part.added ? '+' : part.removed ? '-' : ' ';
-          const color = part.added
-            ? chalk.green
-            : part.removed
-              ? chalk.red
-              : chalk.gray;
-
-          process.stdout.write(color(`${symbol} ${part.value}`));
-        }
-
+        printDiff(upstreamItem.content_html, localHtml);
         console.log(); // newline
       }
 

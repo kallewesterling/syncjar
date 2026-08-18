@@ -175,8 +175,11 @@ npm run push -- --course This-Is-My-Course-Title --lesson 03-wrap-up
 # Show diffs only (no syncing)
 npm run push -- --diff-only
 
-# Push everything without prompting
+# Push content-item HTML changes without prompting
 npm run push -- --force
+
+# Push course/lesson title changes without prompting (separate from --force)
+npm run push -- --force-titles
 
 # Push without showing diffs
 npm run push -- --no-diff
