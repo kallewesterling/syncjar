@@ -36,8 +36,24 @@ dotenv.config();
 // Auto-retries on 429/5xx, honouring the server's Retry-After header.
 const client = createSkilljarClient();
 
+// Skilljar and the local copy wrap and indent markup differently without
+// anyone editing anything, so comparing them literally reports changes nobody
+// made. Collapsing runs of whitespace removes that noise.
+//
+// Inside <pre>, whitespace is the content. A YAML block indented with tabs and
+// the same block indented with spaces are different documents, because YAML
+// forbids the tab, and a reader who copies the first one gets a parse error.
+// Collapsing there reports such a block as already in sync, so the fix can
+// never be pushed. Keep those spans exactly, and settle only line endings,
+// which change in transport rather than in an edit.
 function normalizeHtml(html = '') {
-  return html.trim().replace(/\s+/g, ' ');
+  // Odd indices are the captured <pre> spans; even indices are everything else.
+  return String(html)
+    .split(/(<pre\b[\s\S]*?<\/pre>)/i)
+    .map((part, i) =>
+      i % 2 ? part.replace(/\r\n?/g, '\n') : part.replace(/\s+/g, ' '))
+    .join('')
+    .trim();
 }
 
 // Prints a diffLines() result the same way for every field we sync: one
