@@ -232,9 +232,20 @@ async function syncCourse(courseFolder) {
 // MAIN
 (async () => {
   const coursesDir = process.env.COURSE_CONTENT_PATH || path.join(__dirname, '..', 'local-skilljar');
+  // A course is a directory. The content root also holds loose JSON files and
+  // whatever the operating system leaves behind, and those are not courses
+  // that failed to sync. Warning about them taught people to read past a
+  // warning that still means something for a real course directory with no
+  // metadata, so do not treat them as candidates at all.
+  //
+  // An explicitly named --course is left alone, because there the warning
+  // answers a question the caller actually asked.
   const courseFolders = argv.course
     ? [argv.course]
-    : await fs.readdir(coursesDir);
+    : (await fs.readdir(coursesDir, { withFileTypes: true }))
+        .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
+        .map((entry) => entry.name)
+        .sort();
 
   for (const courseFolder of courseFolders) {
     await syncCourse(courseFolder);
