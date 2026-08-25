@@ -17,7 +17,7 @@
     "sync:users": "node scripts/sync-users.mjs"
 },
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "description": "",
   "dependencies": {
     "axios": "^1.8.4",
