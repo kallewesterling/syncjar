@@ -10,7 +10,7 @@
     "build:preview": "npm run pull:skilljar && npm run generate:courses"
   },
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "description": "",
   "dependencies": {
     "axios": "^1.8.4",
