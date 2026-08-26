@@ -6,6 +6,7 @@ import chalk from 'chalk';
 import inquirer from 'inquirer';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
+import { listCourseDirs } from './course-dirs.mjs';
 
 // __dirname workaround for ESM
 const __filename = fileURLToPath(import.meta.url);
@@ -258,10 +259,7 @@ async function syncCourse(courseFolder) {
   // answers a question the caller actually asked.
   const courseFolders = argv.course
     ? [argv.course]
-    : (await fs.readdir(coursesDir, { withFileTypes: true }))
-        .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
-        .map((entry) => entry.name)
-        .sort();
+    : await listCourseDirs(coursesDir);
 
   for (const courseFolder of courseFolders) {
     await syncCourse(courseFolder);

@@ -46,6 +46,8 @@ It's your local **Skilljar workspace**: Write content, test changes, see diffs, 
 ├── scripts/
 │   ├── sync-skilljar-to-local.mjs   # Pull from Skilljar
 │   ├── sync-local-to-skilljar.mjs   # Push to Skilljar (with diffing)
+│   ├── pull-slugs.mjs               # Pull per-domain URL slugs
+│   ├── course-dirs.mjs              # Map course ids to course directories
 │   ├── generate-courses-json.mjs    # Create preview course index
 │   ├── export-courses-to-md.mjs     # Export course content as Markdown
 │   ├── export-users-to-csv.mjs      # Export Skilljar users to CSV
@@ -84,7 +86,7 @@ npm run build:preview
 | Command | Description |
 |---|---|
 | `npm run pull` | Pull all courses from Skilljar to local files |
-| `npm run pull -- --course <slug>` | Pull a single course (partial name match) |
+| `npm run pull -- --course <slug>` | Pull a single course (partial match on directory name or title) |
 | `npm run push` | Push local edits back to Skilljar (with diffs + prompts) |
 | `npm run generate:courses` | Regenerate the local preview index |
 | `npm run build:preview` | Pull + generate (full refresh) |
@@ -94,6 +96,24 @@ npm run build:preview
 | `npm run export:metrics` | Export course metrics to CSV |
 | `npm run check:links` | Check for broken links in course content |
 | `npm run sync:users` | Sync user data from Skilljar |
+| `npm test` | Run the unit tests |
+
+## 🗃 Course Directory Names
+
+A course's directory name comes from its **course id**, not its title.
+
+`npm run pull` reads the `id` in every `details.json` under the content path and
+builds a map of course id to directory name. A course that already has a
+directory keeps that directory's name exactly, even after someone rewords or
+re-cases its title in Skilljar. Only a course id that is new to the tree gets a
+name derived from its title.
+
+This is what stops a renamed course from gaining a second directory. It also
+keeps the tree safe on macOS, where two names that differ only in case cannot
+coexist.
+
+To rename a course directory, rename it yourself. The next pull follows the new
+name, because it matches on the id.
 
 ## 🔁 Sync Local Edits Back to Skilljar
 

@@ -6,6 +6,7 @@ import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import chalk from 'chalk';
 import { createSkilljarClient } from './skilljar-client.mjs';
+import { slugify, readCourseDirIndex, resolveCourseDirName } from './course-dirs.mjs';
 
 dotenv.config();
 
@@ -23,22 +24,21 @@ const __dirname = path.dirname(__filename);
 // Axios client for Skilljar (auto-retries on 429/5xx, honouring Retry-After)
 const client = createSkilljarClient();
 
-// Slugify helper
-function slugify(text) {
-  return text
-    .toString()
-    .normalize('NFKD')
-    .replace(/[^\w\s-]/g, '')
-    .trim()
-    .replace(/\s+/g, '-');
-}
+// Fall back on the env var itself. `path.join(undefined, x) || fallback` throws
+// inside path.join before `||` is ever read.
+const contentPath = process.env.COURSE_CONTENT_PATH
+  || path.join(__dirname, '..', 'local-skilljar');
 
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
 class SyncTable {
-  constructor(courses) {
-    this.rows = courses.map(c => ({ title: c.title, status: 'pending', lessons: null, frame: 0 }));
-    this.titleWidth = Math.max(...courses.map(c => c.title.length), 'Course'.length);
+  // Rows are keyed by directory name, not title: titles are not unique, so a
+  // title key can mark the wrong row done.
+  constructor(targets) {
+    this.rows = targets.map(({ course, dirName }) => ({
+      key: dirName, title: course.title, status: 'pending', lessons: null, frame: 0
+    }));
+    this.titleWidth = Math.max(...this.rows.map(r => r.title.length), 'Course'.length);
     this._interval = null;
   }
 
@@ -74,13 +74,13 @@ class SyncTable {
     }, 80);
   }
 
-  setStarted(title) {
-    const row = this.rows.find(r => r.title === title);
+  setStarted(key) {
+    const row = this.rows.find(r => r.key === key);
     if (row) row.status = 'syncing';
   }
 
-  setDone(title, lessons) {
-    const row = this.rows.find(r => r.title === title);
+  setDone(key, lessons) {
+    const row = this.rows.find(r => r.key === key);
     if (row) { row.status = 'done'; row.lessons = lessons; }
     if (this.rows.every(r => r.status === 'done')) {
       clearInterval(this._interval);
@@ -161,11 +161,13 @@ async function mapWithConcurrency(items, limit, fn) {
 // Max content-item requests in flight per course at any moment.
 const LESSON_CONCURRENCY = 4;
 
-async function syncCourse(course, table) {
-  const slug = slugify(course.title);
-  const exportDir = path.join(process.env.COURSE_CONTENT_PATH, slug) || path.join(__dirname, '..', 'local-skilljar', slug);
+// `dirName` must come from the caller, which resolves it from the course id.
+// Deriving it from the mutable title here creates a second directory for the
+// same course every time an editor rewords or re-cases a title upstream.
+async function syncCourse(course, dirName, table) {
+  const exportDir = path.join(contentPath, dirName);
   const lessonsDir = path.join(exportDir, 'lessons');
-  table.setStarted(course.title);
+  table.setStarted(dirName);
 
   const [lessons] = await Promise.all([
     fetchLessons(course.id),
@@ -219,41 +221,70 @@ async function syncCourse(course, table) {
   });
 
   await fs.outputJson(path.join(exportDir, 'lessons-meta.json'), lessonMetaList, { spaces: 2 });
-  table.setDone(course.title, lessons.length);
+  table.setDone(dirName, lessons.length);
 }
 
 // MAIN
 (async () => {
   let courses = await fetchCourses();
 
-  // Deduplicate by slug — the API sometimes returns two courses with the same
-  // title (different IDs). Keep the most recently modified of each pair.
-  const bySlug = new Map();
+  // Deduplicate by id, in case the API returns a course twice across pages.
+  // This used to deduplicate by title slug, to stop two same-titled courses
+  // from racing each other into one title-derived directory. Directories now
+  // come from the id, so same-titled courses get separate directories and the
+  // title key would only drop a real course.
+  const byId = new Map();
   for (const c of courses) {
-    const slug = slugify(c.title);
-    const existing = bySlug.get(slug);
+    if (!c?.id) continue;
+    const existing = byId.get(c.id);
     if (!existing || new Date(c.modified_at) > new Date(existing.modified_at)) {
-      bySlug.set(slug, c);
+      byId.set(c.id, c);
     }
   }
-  courses = [...bySlug.values()];
+  courses = [...byId.values()];
 
   // Most recently updated first
   courses.sort((a, b) => new Date(b.modified_at) - new Date(a.modified_at));
 
+  // Reuse the directory each course already has. Resolve every name before the
+  // concurrent sync starts, so the result does not depend on completion order.
+  const index = await readCourseDirIndex(contentPath);
+  let targets = courses.map(course => ({
+    course,
+    dirName: resolveCourseDirName(index, course)
+  }));
+
+  for (const [id, dirs] of index.duplicates) {
+    console.warn(chalk.yellow(
+      `⚠️  Course id ${id} is in ${dirs.length} directories: ${dirs.join(', ')}. ` +
+      `Writing to "${index.byId.get(id)}" only — delete the others.`
+    ));
+  }
+  if (index.unidentified.length) {
+    console.warn(chalk.gray(
+      `Ignoring ${index.unidentified.length} directory/directories with no course id ` +
+      `in details.json: ${index.unidentified.join(', ')}`
+    ));
+  }
+
   if (argv.course) {
     const filter = argv.course.toLowerCase();
-    courses = courses.filter(c => slugify(c.title).toLowerCase().includes(filter));
-    if (courses.length === 0) {
+    // Match the directory name as well as the title slug, since the two can
+    // differ once a title changes upstream.
+    const filtered = targets.filter(t =>
+      t.dirName.toLowerCase().includes(filter)
+      || slugify(t.course.title || '').toLowerCase().includes(filter));
+    if (filtered.length === 0) {
       console.error(`No courses matched --course "${argv.course}"`);
       process.exit(1);
     }
+    targets = filtered;
   }
 
-  const table = new SyncTable(courses);
+  const table = new SyncTable(targets);
   table.start();
 
-  await withConcurrency(courses, 3, course => syncCourse(course, table));
+  await withConcurrency(targets, 3, ({ course, dirName }) => syncCourse(course, dirName, table));
 
   process.stdout.write('\n🎉 All courses synced.\n');
 })();

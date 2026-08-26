@@ -28,6 +28,7 @@ import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import chalk from 'chalk';
 import { createSkilljarClient } from './skilljar-client.mjs';
+import { readCourseDirIndex } from './course-dirs.mjs';
 
 dotenv.config();
 
@@ -62,21 +63,14 @@ async function fetchPublished(domain) {
   return out; // each: { id, slug, live, hidden, course: { id, title } }
 }
 
-// Map local course id -> directory name, by reading each details.json.
-async function localCourseDirs() {
-  const byId = {};
-  for (const dir of await fs.readdir(contentPath)) {
-    const detailsPath = path.join(contentPath, dir, 'details.json');
-    if (!(await fs.pathExists(detailsPath))) continue;
-    const details = await fs.readJson(detailsPath);
-    if (details.id) byId[details.id] = dir;
-  }
-  return byId;
-}
-
 (async () => {
-  const byId = await localCourseDirs();
-  console.log(chalk.gray(`Local courses: ${Object.keys(byId).length}. Domains: ${domains.join(', ')}`));
+  // Shared with the pull script, so both sides agree on which directory holds
+  // which course id.
+  const { byId, duplicates } = await readCourseDirIndex(contentPath);
+  console.log(chalk.gray(`Local courses: ${byId.size}. Domains: ${domains.join(', ')}`));
+  for (const [cid, dirs] of duplicates) {
+    console.log(chalk.yellow(`⚠️  Course id ${cid} is in ${dirs.length} directories: ${dirs.join(', ')}`));
+  }
 
   // Collect: courseId -> { domain -> { slug, published_course_id, live, hidden } }
   const collected = {};
@@ -101,7 +95,7 @@ async function localCourseDirs() {
   const unpublished = [];    // local course dir with no published entry
 
   for (const [cid, domainMap] of Object.entries(collected)) {
-    const dir = byId[cid];
+    const dir = byId.get(cid);
     if (!dir) { missingLocal.push(`${cid} (${titles[cid] || '?'})`); continue; }
 
     const payload = {
@@ -127,7 +121,7 @@ async function localCourseDirs() {
     else { await fs.writeJson(target, payload, { spaces: 2 }); written++; }
   }
 
-  for (const cid of Object.keys(byId)) if (!collected[cid]) unpublished.push(byId[cid]);
+  for (const [cid, dir] of byId) if (!collected[cid]) unpublished.push(dir);
 
   console.log();
   if (argv.check) {
