@@ -1,7 +1,7 @@
 import fs from 'fs-extra';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { diffLines } from 'diff';
+import { diffWordsWithSpace } from 'diff';
 import chalk from 'chalk';
 import inquirer from 'inquirer';
 import yargs from 'yargs';
@@ -57,19 +57,34 @@ function normalizeHtml(html = '') {
     .trim();
 }
 
-// Prints a diffLines() result the same way for every field we sync: one
-// +/-/space prefixed line per part. diffLines() only includes a trailing
-// newline in `part.value` when the source text had one, which is always true
-// for multi-line HTML but never for single-line fields like a title — so we
-// add it back here to keep single-line diffs from being smashed onto one row.
+// normalizeHtml collapses each block of markup onto one long line, so a
+// line-level diff flags any real edit as "whole line removed, whole line
+// added" — the reader can't tell what actually changed without eyeballing
+// two giant strings. Word-level diffing highlights just the words that
+// changed, wherever they fall in the line.
+const CONTEXT_CHARS = 60;
+
+// Unchanged spans between edits can still be huge (a full paragraph either
+// side of a one-word fix), so trim anything past a small window around each
+// change rather than flooding the terminal with text nobody needs to review.
+function elideContext(text) {
+  if (text.length <= CONTEXT_CHARS * 2 + 20) return text;
+  const skipped = text.length - CONTEXT_CHARS * 2;
+  return `${text.slice(0, CONTEXT_CHARS)}…[${skipped} unchanged chars]…${text.slice(-CONTEXT_CHARS)}`;
+}
+
 function printDiff(oldValue, newValue) {
-  const diff = diffLines(oldValue || '', newValue || '');
-  for (const part of diff) {
-    const symbol = part.added ? '+' : part.removed ? '-' : ' ';
-    const color = part.added ? chalk.green : part.removed ? chalk.red : chalk.gray;
-    const text = part.value.endsWith('\n') ? part.value : `${part.value}\n`;
-    process.stdout.write(color(`${symbol} ${text}`));
+  const parts = diffWordsWithSpace(oldValue || '', newValue || '');
+  for (const part of parts) {
+    if (part.removed) {
+      process.stdout.write(chalk.bgRed.white(part.value));
+    } else if (part.added) {
+      process.stdout.write(chalk.bgGreen.black(part.value));
+    } else {
+      process.stdout.write(chalk.gray(elideContext(part.value)));
+    }
   }
+  process.stdout.write('\n');
 }
 
 // Diffs a plain text field (e.g. a title) against its upstream value and,
