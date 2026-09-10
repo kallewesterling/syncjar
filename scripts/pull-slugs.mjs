@@ -13,11 +13,11 @@
  * Env (.env):
  *   SKILLJAR_API_KEY      required (used by skilljar-client.mjs)
  *   COURSE_CONTENT_PATH   required, e.g. ../courses/courses
- *   SKILLJAR_DOMAINS      optional, comma-separated; overridden by --domain
+ *   SKILLJAR_DOMAINS      required unless --domain is passed; comma-separated
  *
  * Usage:
  *   node scripts/pull-slugs.mjs
- *   node scripts/pull-slugs.mjs --domain courses.chainguard.dev --domain example.skilljar.com
+ *   node scripts/pull-slugs.mjs --domain courses.example.com --domain example.skilljar.com
  *   node scripts/pull-slugs.mjs --dry-run
  *   node scripts/pull-slugs.mjs --check        # CI: exit non-zero if any published.json is stale/missing
  */
@@ -32,8 +32,6 @@ import { readCourseDirIndex } from './course-dirs.mjs';
 
 dotenv.config();
 
-const DEFAULT_DOMAINS = ['courses.chainguard.dev', 'example.skilljar.com'];
-
 const argv = yargs(hideBin(process.argv))
   .option('domain', { type: 'array', description: 'Skilljar domain host (repeatable). Overrides SKILLJAR_DOMAINS.' })
   .option('dry-run', { type: 'boolean', default: false, description: 'Print what would be written; write nothing.' })
@@ -42,8 +40,21 @@ const argv = yargs(hideBin(process.argv))
 
 const client = createSkilljarClient();
 
-const domains = (argv.domain && argv.domain.length ? argv.domain
-  : (process.env.SKILLJAR_DOMAINS ? process.env.SKILLJAR_DOMAINS.split(',').map(s => s.trim()) : DEFAULT_DOMAINS));
+// Which domains to pull from is a property of the Skilljar instance, not of
+// this tool, so there is no sensible default to fall back on: a hardcoded one
+// is either wrong for everyone else or someone's internal hostname published
+// in a public repo. Ask for it, and say how to supply it.
+const domains = (argv.domain?.length ? argv.domain
+  : (process.env.SKILLJAR_DOMAINS || '').split(',').map(s => s.trim())
+).filter(Boolean);
+
+if (!domains.length) {
+  console.error(chalk.red('No Skilljar domains configured.'));
+  console.error('Set SKILLJAR_DOMAINS in .env (comma-separated), or pass --domain:');
+  console.error('  SKILLJAR_DOMAINS=courses.example.com,example.skilljar.com');
+  console.error('  node scripts/pull-slugs.mjs --domain courses.example.com');
+  process.exit(1);
+}
 
 const contentPath = process.env.COURSE_CONTENT_PATH;
 if (!contentPath) { console.error('COURSE_CONTENT_PATH is not set'); process.exit(1); }
