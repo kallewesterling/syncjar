@@ -62,11 +62,22 @@ Full endpoint reference: <https://api.skilljar.com/docs/> (JavaScript-rendered, 
 - Student exports contain real names and email addresses. Delete them when the
   task is done; they regenerate from the API in one command.
 
-## Known bug in the shipped user export
+## The user export used to be silently partial (fixed)
 
-`sync-users.mjs` skips users whose per-user cache file already exists and does
-*not* add them to `processed`. Since `processed` is what gets written to
-`user-progress.json` — the file `export-users-to-csv.mjs` reads — the resulting
-CSV contains only the users touched in that run. **On any re-run it is silently
-partial.** Do not use `npm run export:users` for audits. Use
-`scripts/export-students.mjs`, which hits `/users` once and completely.
+`sync-users.mjs` skipped users whose per-user cache file already existed without
+adding them to `processed`, and `processed` was what got written to
+`user-progress.json` — the file `export-users-to-csv.mjs` reads. So every re-run
+produced a CSV covering only the users fetched that run. In this repo it had
+degraded to 36 of 1,764 users, a 2% export that looked like a clean result.
+
+`user-progress.json` is now built by reading every per-user file back off disk
+(`readAllCachedUsers`), so it is complete regardless of how many partial or
+resumed runs built the cache up, and the run warns when it covers fewer users
+than the API returned. `test/sync-users.test.mjs` pins the behaviour.
+
+Two things to keep in mind:
+
+- The per-user cache never expires. Files are reused indefinitely, so progress
+  data goes stale until you delete `public/data/user-progress/`.
+- For a straight roster, `scripts/export-students.mjs` is still the cheaper
+  path: one sweep of `/users` rather than N × (1 + courses) requests.

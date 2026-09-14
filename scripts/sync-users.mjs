@@ -1,6 +1,6 @@
 import fs from 'fs-extra';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 import dotenv from 'dotenv';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
@@ -108,7 +108,7 @@ async function syncUsers() {
 
     const userFile = path.join(perUserDir, `${userId}.json`);
     if (!argv.dryRun && await fs.pathExists(userFile)) {
-      console.log(`↪️ Already processed. Skipping ${userId}.`);
+      console.log(`↪️ Already cached. Skipping fetch for ${userId}.`);
       continue;
     }
 
@@ -137,17 +137,60 @@ async function syncUsers() {
 
   if (!argv.dryRun) {
     await fs.writeJson(userListPath, users, { spaces: 2 });
-    await fs.writeJson(mergedPath, processed, { spaces: 2 });
+
+    // Build the merged file from every per-user record on disk, not from the
+    // ones this run happened to fetch. A user whose cache file already existed
+    // is skipped above to avoid re-fetching — but skipping the fetch must not
+    // mean dropping them from the output. Writing `processed` here meant that
+    // on any re-run the merged file held only the users touched that run, and
+    // an audit reading a short file sees a clean result rather than an error.
+    const merged = await readAllCachedUsers();
+    await fs.writeJson(mergedPath, merged, { spaces: 2 });
 
     console.log(`✅ Saved flat user list: ${userListPath}`);
-    console.log(`✅ Saved merged progress: ${mergedPath}`);
+    console.log(`✅ Saved merged progress: ${mergedPath} (${merged.length} user(s))`);
+
+    // --limit and --start-after deliberately cut the run short, and a user who
+    // has never been fetched has no cache file to merge, so say plainly that
+    // the merged file is not the whole population.
+    const expected = users.filter((e) => e.user?.id).length;
+    if (merged.length < expected) {
+      console.warn(`⚠️ ${mergedPath} covers ${merged.length} of ${expected} users.`);
+      console.warn('   Re-run without --limit/--start-after for a complete file.');
+    }
   } else {
     console.log('💡 Dry run mode: no files written.');
   }
 
-  console.log(`🎉 Sync complete. Processed ${processed.length} user(s).`);
+  console.log(`🎉 Sync complete. Fetched ${processed.length} user(s) this run.`);
 }
 
-syncUsers().catch(err => {
-  console.error('❌ Sync failed:', err.message);
-});
+// The per-user files are the durable record; the merged file is a view over
+// them. Reading them back keeps the two consistent no matter how many partial
+// or resumed runs it took to build the cache up.
+export async function readAllCachedUsers(dir = perUserDir) {
+  if (!(await fs.pathExists(dir))) return [];
+
+  const files = (await fs.readdir(dir)).filter((f) => f.endsWith('.json'));
+  const records = [];
+
+  for (const file of files) {
+    try {
+      records.push(await fs.readJson(path.join(dir, file)));
+    } catch (err) {
+      // A truncated file from an interrupted write would otherwise take the
+      // whole export down with it. Name it and move on.
+      console.warn(`⚠️ Skipping unreadable cache file ${file}: ${err.message}`);
+    }
+  }
+
+  return records;
+}
+
+// Only sync when run directly, so the merge logic above can be imported by the
+// tests without kicking off thousands of API calls.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  syncUsers().catch(err => {
+    console.error('❌ Sync failed:', err.message);
+  });
+}
