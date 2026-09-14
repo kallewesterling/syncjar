@@ -10,6 +10,25 @@ fact, so they group related commits rather than listing each one.
 
 ## [Unreleased]
 
+### Security
+
+- The internal Skilljar test hostname was removed from the working tree and
+  purged from git history, and all branches were force-pushed. Old commit SHAs
+  remain retrievable from GitHub's API until GitHub garbage-collects the
+  unreachable objects; ask GitHub Support to run GC to complete the removal.
+
+### Fixed
+
+- `sync-users.mjs` no longer writes a silently partial `user-progress.json`.
+  Users whose per-user cache file already existed were skipped without being
+  added to `processed`, and `processed` was what got written — so every re-run
+  produced a file covering only the users fetched that run, and the CSV built
+  from it came out short without anything reporting a problem. Here it had
+  degraded to 36 of 1,764 users. The merged file is now assembled by reading
+  every per-user record back off disk, which makes it complete regardless of
+  how many partial or resumed runs built the cache up, and the run warns when
+  it covers fewer users than the API returned.
+
 ### Added
 
 - `scripts/export-students.mjs` — exports the flat Skilljar student list to CSV
@@ -35,6 +54,11 @@ fact, so they group related commits rather than listing each one.
 
 ### Changed
 
+- `pull-slugs.mjs` requires `SKILLJAR_DOMAINS` (or `--domain`) instead of
+  falling back to a hardcoded domain list. Which domains to pull from is a
+  property of the Skilljar instance, not of this tool, so the previous default
+  was both wrong for every other user and a way of committing an internal
+  hostname. Documented in `.env-example`.
 - Push diffs are now word-level instead of line-level
   (`scripts/sync-local-to-skilljar.mjs`). `normalizeHtml` collapses each block
   of markup onto one long line, so a line diff reported every real edit as
