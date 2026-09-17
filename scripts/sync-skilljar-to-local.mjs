@@ -7,6 +7,7 @@ import { hideBin } from 'yargs/helpers';
 import chalk from 'chalk';
 import { createSkilljarClient } from './skilljar-client.mjs';
 import { slugify, readCourseDirIndex, resolveCourseDirName } from './course-dirs.mjs';
+import { readLessonDirIndex, resolveLessonDirName } from './lesson-dirs.mjs';
 
 dotenv.config();
 
@@ -169,13 +170,16 @@ async function syncCourse(course, dirName, table) {
   const lessonsDir = path.join(exportDir, 'lessons');
   table.setStarted(dirName);
 
-  const [lessons] = await Promise.all([
+  const [lessons, lessonIndex] = await Promise.all([
     fetchLessons(course.id),
+    // Read before lessons-meta.json gets overwritten below, so an id that
+    // already has a slug keeps it regardless of what the title says now.
+    readLessonDirIndex(exportDir),
     fs.outputJson(path.join(exportDir, 'details.json'), course, { spaces: 2 })
   ]);
 
   const lessonMetaList = await mapWithConcurrency(lessons, LESSON_CONCURRENCY, async (lesson) => {
-    const lessonSlug = `${lesson.order.toString().padStart(2, '0')}-${slugify(lesson.title)}`;
+    const lessonSlug = resolveLessonDirName(lessonIndex, lesson);
     const lessonFolder = path.join(lessonsDir, lessonSlug);
 
     const [contentItems] = await Promise.all([
