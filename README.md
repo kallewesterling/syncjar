@@ -205,6 +205,21 @@ npm run push -- --force-titles
 npm run push -- --no-diff
 ```
 
+#### Branch guard
+
+Skilljar holds one live state and knows nothing about git branches. If your course content repo is on a feature branch that's behind `dev`/`main`, pushing from it silently overwrites whatever landed there in the meantime — and git can't catch that, because the danger is entirely in which branch happens to be checked out.
+
+So `npm run push` refuses to run unless your **course content repo** (`COURSE_CONTENT_PATH`) is on `dev` or `main`. A detached HEAD, or a content directory that isn't a git repo at all, is also refused: nothing establishes that the content is current.
+
+`--dry-run` and `--diff-only` never write to Skilljar, so they work from any branch.
+
+```bash
+# Push from another branch, naming it explicitly
+npm run push -- --allow-branch feat/new-lesson
+```
+
+The guard checks *which* branch you're on, not whether it's up to date — pull before you push.
+
 ## 🔒 Connect to Your Course Content
 
 This repo does **not** track course content directly. To use it:
