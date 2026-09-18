@@ -7,6 +7,11 @@ import inquirer from 'inquirer';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import { listCourseDirs } from './course-dirs.mjs';
+import {
+  DEFAULT_ALLOWED_BRANCHES,
+  getCurrentBranch,
+  isBranchAllowed
+} from './branch-guard.mjs';
 
 // __dirname workaround for ESM
 const __filename = fileURLToPath(import.meta.url);
@@ -25,6 +30,11 @@ const argv = yargs(hideBin(process.argv))
     type: 'boolean',
     default: false,
     describe: 'If set, updates the lesson description_html with today\'s date'
+  })
+  .option('allow-branch', {
+    type: 'array',
+    default: [],
+    describe: `Also allow pushing from this content-repo branch (repeatable). Allowed by default: ${DEFAULT_ALLOWED_BRANCHES.join(', ')}`
   })
   .help()
   .argv;
@@ -264,6 +274,34 @@ async function syncCourse(courseFolder) {
 // MAIN
 (async () => {
   const coursesDir = process.env.COURSE_CONTENT_PATH || path.join(__dirname, '..', 'local-skilljar');
+
+  // Guard the content repo's branch, not syncjar's — the stale content that
+  // would overwrite Skilljar lives in coursesDir. --dry-run and --diff-only
+  // never write upstream, so they run from any branch.
+  if (!argv['dry-run'] && !argv['diff-only']) {
+    const allowedBranches = [...DEFAULT_ALLOWED_BRANCHES, ...argv['allow-branch']];
+    const branch = getCurrentBranch(coursesDir);
+
+    if (!isBranchAllowed(branch, allowedBranches)) {
+      const where = branch
+        ? `is on branch ${chalk.yellow(branch)}`
+        : 'has no branch checked out (detached HEAD, or not a git repo)';
+
+      console.error(chalk.bold.red(`\n⛔ Refusing to push: the course content at ${coursesDir} ${where}.`));
+      console.error(chalk.gray(
+        `\nSkilljar holds one live state and knows nothing about branches, so pushing from a\n` +
+        `branch whose content is behind ${DEFAULT_ALLOWED_BRANCHES.join('/')} would silently overwrite live fixes.\n`
+      ));
+      console.error(`Allowed branches: ${allowedBranches.join(', ')}`);
+      console.error(chalk.gray(
+        `\nTo preview without writing:   npm run push -- --dry-run\n` +
+        (branch ? `To push from this branch:     npm run push -- --allow-branch ${branch}\n` : '')
+      ));
+      process.exitCode = 1;
+      return;
+    }
+  }
+
   // A course is a directory. The content root also holds loose JSON files and
   // whatever the operating system leaves behind, and those are not courses
   // that failed to sync. Warning about them taught people to read past a

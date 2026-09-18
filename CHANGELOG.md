@@ -31,6 +31,18 @@ fact, so they group related commits rather than listing each one.
 
 ### Added
 
+- `npm run push` now refuses to run unless the course content repo
+  (`COURSE_CONTENT_PATH`) is on `dev` or `main`. Skilljar holds one live state
+  and has no concept of branches, so pushing from a feature branch whose
+  content is behind `dev`/`main` silently overwrites whatever landed there
+  after the branch was cut — and git cannot catch it, because the danger is
+  entirely in which branch happens to be checked out locally. A detached HEAD
+  or a non-git content directory is refused on the same grounds: nothing
+  establishes that the content is current. `--allow-branch <name>` allows one
+  named branch; `--dry-run` and `--diff-only` never write upstream and are
+  unaffected. The guard checks which branch is checked out, not whether it is
+  up to date with its remote.
+
 - `scripts/export-students.mjs` — exports the flat Skilljar student list to CSV
   in a single paginated sweep of `/users`. Read-only. Written because
   `sync-users.mjs` skips users whose per-user cache file already exists without
