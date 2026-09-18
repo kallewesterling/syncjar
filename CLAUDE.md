@@ -62,6 +62,49 @@ Full endpoint reference: <https://api.skilljar.com/docs/> (JavaScript-rendered, 
 - Student exports contain real names and email addresses. Delete them when the
   task is done; they regenerate from the API in one command.
 
+## Check the checkout before pushing
+
+`push` writes to a live LMS with whatever code is checked out. A stale working
+tree does not fail — it succeeds at the wrong thing. The pre-rewrite tree (see
+below) had no `<pre>` whitespace preservation, hardcoded Skilljar domains, and
+no branch guard, so a push from it would mangle code blocks and silently
+overwrite live content while reporting success.
+
+So before any push, confirm the branch is current with its remote:
+
+```bash
+git fetch origin && git status -sb   # want: "## v2.0...origin/v2.0" with no ahead/behind
+```
+
+A bare `## <branch>` with no `...origin/<branch>` means the branch has no
+upstream at all, so that line is telling you nothing about how current it is.
+
+The same applies to the **course content repo** — `push` reads content from
+`COURSE_CONTENT_PATH`, so its branch is what decides what lands in Skilljar.
+The branch guard in `sync-local-to-skilljar.mjs` checks *which* branch that repo
+is on, but not whether it is up to date, so a stale local `dev` still overwrites.
+
+### Clones predating the 2026-09 history rewrite are on orphaned commits
+
+The internal Skilljar test hostname was purged from history and every branch was
+force-pushed (see the CHANGELOG). Any clone from before that is carrying the old
+SHAs, and **the divergence is invisible**: same file contents, same commit
+subjects, different SHAs. `git log` looks perfectly normal.
+
+It surfaces later as a misleading error — `fatal: Not possible to fast-forward`,
+which reads like an ordinary "you're behind, pull first" rather than "this branch
+is on discarded history." It bit once already, during a `gh pr merge` that had
+in fact **merged successfully** on the remote and only failed while updating the
+local branch afterward, leaving the tree checked out on pre-rewrite code.
+
+Check with `git rev-list --left-right --count <branch>...origin/<branch>`. Any
+local-ahead count on a branch you never committed to means orphaned history;
+`git reset --hard origin/<branch>` is the fix. Verify nothing is unique to the
+local side first — `comm -23` over `git ls-tree -r --name-only` for each side —
+and note the old tip stays in the reflog.
+
+Delete this section once every working clone is known to postdate the rewrite.
+
 ## The user export used to be silently partial (fixed)
 
 `sync-users.mjs` skipped users whose per-user cache file already existed without
