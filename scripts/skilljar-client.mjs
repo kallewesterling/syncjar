@@ -40,6 +40,34 @@ function shouldRetry(error) {
 }
 
 /**
+ * Reports a failed Skilljar call and exits 1. **Does not return.**
+ *
+ * An unhandled axios rejection prints the whole request object — including the
+ * Authorization header, which carries the API key in trivially recoverable
+ * form. So no catch block may print the error itself: status and a short body
+ * only. Every caller of this module's client is expected to route its failures
+ * through here.
+ */
+export function failCleanly(err, context) {
+  const status = err?.response?.status;
+  const body = err?.response?.data;
+  console.error(chalk.red(`\n❌ ${context}`));
+  if (status) console.error(chalk.red(`   HTTP ${status}`));
+  if (typeof body === 'string' && body.length < 300) {
+    console.error(chalk.red(`   ${body}`));
+  } else if (body?.detail) {
+    console.error(chalk.red(`   ${body.detail}`));
+  } else if (!status) {
+    console.error(chalk.red(`   ${err?.code || err?.message || 'unknown error'}`));
+  }
+  if (status === 401 || status === 403) {
+    console.error(chalk.yellow('   Check SKILLJAR_API_KEY in .env, and that outbound'));
+    console.error(chalk.yellow('   access to api.skilljar.com is permitted from here.'));
+  }
+  process.exit(1);
+}
+
+/**
  * Creates an axios client pre-configured for the Skilljar API with automatic
  * retry on rate limiting (429) and transient server errors, respecting the
  * server's Retry-After header.

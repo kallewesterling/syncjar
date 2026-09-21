@@ -38,6 +38,12 @@ It's your local **Skilljar workspace**: Write content, test changes, see diffs, 
 │           └── <lesson-slug>/
 │               └── content-<content_item_id>.html
 │
+├── local-skilljar-paths/
+│   └── <path-title>/
+│       ├── details.json             # The learning path itself
+│       ├── path-items.json          # Its member courses
+│       └── published.json           # Per-domain slugs
+│
 ├── public/
 │   ├── courses/                     # Local preview output
 │   └── data/
@@ -47,6 +53,7 @@ It's your local **Skilljar workspace**: Write content, test changes, see diffs, 
 │   ├── sync-skilljar-to-local.mjs   # Pull from Skilljar
 │   ├── sync-local-to-skilljar.mjs   # Push to Skilljar (with diffing)
 │   ├── pull-slugs.mjs               # Pull per-domain URL slugs
+│   ├── pull-paths.mjs               # Pull learning paths and their members
 │   ├── course-dirs.mjs              # Map course ids to course directories
 │   ├── generate-courses-json.mjs    # Create preview course index
 │   ├── export-courses-to-md.mjs     # Export course content as Markdown
@@ -87,6 +94,9 @@ npm run build:preview
 |---|---|
 | `npm run pull` | Pull all courses from Skilljar to local files |
 | `npm run pull -- --course <slug>` | Pull a single course (partial match on directory name or title) |
+| `npm run pull:slugs` | Pull each course's per-domain URL slugs |
+| `npm run pull:paths` | Pull learning paths, their member courses, and their per-domain slugs |
+| `npm run pull:paths -- --path <query>` | Pull a single path (partial match on directory name or title) |
 | `npm run push` | Push local edits back to Skilljar (with diffs + prompts) |
 | `npm run generate:courses` | Regenerate the local preview index |
 | `npm run build:preview` | Pull + generate (full refresh) |
@@ -114,6 +124,52 @@ coexist.
 
 To rename a course directory, rename it yourself. The next pull follows the new
 name, because it matches on the id.
+
+## 🧭 Learning Paths
+
+Skilljar models a learning path much like a course, so `npm run pull:paths`
+mirrors the same three objects per path into `local-skilljar-paths/<path>/`:
+
+| File | Source | Contents |
+|---|---|---|
+| `details.json` | `GET /paths` | The path itself, verbatim: title, descriptions, promo image, item count |
+| `path-items.json` | `GET /paths/{id}/path-items` | Its member courses, verbatim |
+| `published.json` | `GET /domains/{domain}/published-paths` | Per-domain slug, publish id, and hidden flag |
+
+Directory naming follows the same id-not-title rule as courses, for the same
+reason — see the section above.
+
+Set `PATH_CONTENT_PATH` in `.env` to write somewhere else (for example, into a
+content repo alongside `COURSE_CONTENT_PATH`):
+
+```env
+PATH_CONTENT_PATH=../courses/paths
+```
+
+Slugs are per-domain, so `published.json` needs to know which domains to ask
+about — the same `SKILLJAR_DOMAINS` (or `--domain`) that `pull:slugs` uses. A
+run with neither configured still writes `details.json` and `path-items.json`,
+and says it is skipping `published.json`.
+
+```bash
+npm run pull:paths                               # everything
+npm run pull:paths -- --path "onboarding"        # one path
+npm run pull:paths -- --dry-run                  # print, write nothing
+npm run pull:paths -- --check                    # CI: non-zero exit if any file is stale
+```
+
+Two caveats worth knowing before you build anything on the output:
+
+- **`path-items.json` is membership, not a running order.** The API returns no
+  order field, and the order it does return is not display order. The file
+  preserves API order and claims nothing more.
+- **A path id belongs to one domain on some instances and several on others.**
+  `published.json` is keyed by domain either way, so it represents both without
+  assuming. If your instance has separate path objects per domain, note that
+  two different path ids can share a slug, and only the slug is common to both.
+
+Paths are read-only here: `npm run push` syncs course and lesson content, and
+does not write path titles or descriptions back upstream.
 
 ## 🔁 Sync Local Edits Back to Skilljar
 

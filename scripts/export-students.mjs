@@ -31,7 +31,7 @@ import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import { parse } from 'json2csv';
 import chalk from 'chalk';
-import { createSkilljarClient } from './skilljar-client.mjs';
+import { createSkilljarClient, failCleanly } from './skilljar-client.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -51,30 +51,6 @@ const argv = yargs(hideBin(process.argv))
   .argv;
 
 const client = createSkilljarClient();
-
-/**
- * An unhandled axios rejection prints the whole request object — including the
- * Authorization header, which contains the API key in recoverable form. Never
- * let a raw axios error reach the console. Print a clean summary and exit.
- */
-function failCleanly(err, context) {
-  const status = err?.response?.status;
-  const body = err?.response?.data;
-  console.error(chalk.red(`\n❌ ${context}`));
-  if (status) console.error(chalk.red(`   HTTP ${status}`));
-  if (typeof body === 'string' && body.length < 300) {
-    console.error(chalk.red(`   ${body}`));
-  } else if (body?.detail) {
-    console.error(chalk.red(`   ${body.detail}`));
-  } else if (!status) {
-    console.error(chalk.red(`   ${err?.code || err?.message || 'unknown error'}`));
-  }
-  if (status === 401 || status === 403) {
-    console.error(chalk.yellow('   Check SKILLJAR_API_KEY in .env, and that outbound'));
-    console.error(chalk.yellow('   access to api.skilljar.com is permitted from here.'));
-  }
-  process.exit(1);
-}
 
 async function fetchAllUsers(pageSize) {
   const all = [];
