@@ -27,7 +27,7 @@ import dotenv from 'dotenv';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import chalk from 'chalk';
-import { createSkilljarClient } from './skilljar-client.mjs';
+import { createSkilljarClient, failCleanly } from './skilljar-client.mjs';
 import { readCourseDirIndex } from './course-dirs.mjs';
 
 dotenv.config();
@@ -64,9 +64,16 @@ async function fetchPublished(domain) {
   const out = [];
   let page = 1;
   while (true) {
-    const { data } = await client.get(`/domains/${domain}/published-courses`, {
-      params: { page, page_size: 100 }
-    });
+    let data;
+    try {
+      ({ data } = await client.get(`/domains/${domain}/published-courses`, {
+        params: { page, page_size: 100 }
+      }));
+    } catch (err) {
+      // failCleanly() exits. A partial slug set is worse than none: it would
+      // be written to disk as if it were the whole picture.
+      failCleanly(err, `Could not list published courses for ${domain} (page ${page}).`);
+    }
     out.push(...(data.results || []));
     if (!data.next) break;
     page += 1;
@@ -142,4 +149,4 @@ async function fetchPublished(domain) {
   console.log(chalk.green(`Wrote ${written}, unchanged ${unchanged}.`));
   if (missingLocal.length) console.log(chalk.yellow(`Published but no local dir (${missingLocal.length}): ${missingLocal.join(', ')}`));
   if (unpublished.length) console.log(chalk.gray(`Local but not published on any domain (${unpublished.length}): ${unpublished.join(', ')}`));
-})();
+})().catch(err => failCleanly(err, 'pull-slugs failed.'));

@@ -12,6 +12,22 @@ fact, so they group related commits rather than listing each one.
 
 ### Security
 
+- The Skilljar client now redacts the errors it rejects with, and the three
+  scripts that never caught them now do. A raw axios error carries `config`,
+  `request` and `response.headers`, and `config.headers.Authorization` is
+  `Basic <base64 of SKILLJAR_API_KEY>` — so any unhandled rejection printed
+  the key. `pull-slugs.mjs`, `sync-skilljar-to-local.mjs` (pull) and
+  `sync-local-to-skilljar.mjs` (push) had no `try`/`catch` around any API call
+  at all, which made a wrong domain or an expired key enough to put the key on
+  screen; measured on a fake key, one 401 stack trace contained it 12 times.
+  `redactError()` now rebuilds every rejected error with the status, body,
+  method, URL and original stack and none of the containers that hold
+  credentials, so a forgotten `try`/`catch` — or an ad-hoc `node -e` — can no
+  longer leak. The ten previously unwrapped call sites route through
+  `failCleanly()` as well, since redaction stops the leak but does not make a
+  partial sync a good outcome: a failed page of a paginated pull would
+  otherwise have been written to disk as though it were the whole set.
+
 - The internal Skilljar test hostname was removed from the working tree and
   purged from git history, and all branches were force-pushed. Old commit SHAs
   remain retrievable from GitHub's API until GitHub garbage-collects the

@@ -41,7 +41,7 @@ const argv = yargs(hideBin(process.argv))
 
 // Load Skilljar auth
 import dotenv from 'dotenv';
-import { createSkilljarClient } from './skilljar-client.mjs';
+import { createSkilljarClient, failCleanly } from './skilljar-client.mjs';
 dotenv.config();
 
 // Auto-retries on 429/5xx, honouring the server's Retry-After header.
@@ -141,7 +141,14 @@ async function syncTextField({ label, endpoint, field, localValue, upstreamValue
   }
 
   if (shouldUpdate) {
-    await client.patch(endpoint, { [field]: localValue });
+    // failCleanly() exits. Stopping at the first failed write is the point:
+    // the operator has been answering prompts one at a time, and carrying on
+    // past a failure would report later successes as if this one had worked.
+    try {
+      await client.patch(endpoint, { [field]: localValue });
+    } catch (err) {
+      failCleanly(err, `Could not update ${label}.`);
+    }
     console.log(chalk.green(`✅ Updated ${label}`));
   } else {
     console.log(chalk.gray(`⏭️ Skipped ${label}`));
@@ -162,7 +169,12 @@ async function syncCourse(courseFolder) {
   const lessons = await fs.readJson(lessonsMetaPath);
 
   if (!argv.lesson) {
-    const { data: upstreamCourse } = await client.get(`/courses/${courseDetails.id}`);
+    let upstreamCourse;
+    try {
+      ({ data: upstreamCourse } = await client.get(`/courses/${courseDetails.id}`));
+    } catch (err) {
+      failCleanly(err, `Could not fetch course ${courseDetails.id} ("${courseDetails.title}") to diff against.`);
+    }
     await syncTextField({
       label: `course title (${courseDetails.title})`,
       endpoint: `/courses/${courseDetails.id}`,
@@ -177,7 +189,12 @@ async function syncCourse(courseFolder) {
 
     console.log(`\n📘 Lesson: ${chalk.bold(courseDetails.title)} ${chalk.cyan(lesson.title)}`);
 
-    const { data: upstreamLesson } = await client.get(`/lessons/${lesson.id}`);
+    let upstreamLesson;
+    try {
+      ({ data: upstreamLesson } = await client.get(`/lessons/${lesson.id}`));
+    } catch (err) {
+      failCleanly(err, `Could not fetch lesson ${lesson.id} ("${lesson.title}") to diff against.`);
+    }
     await syncTextField({
       label: `lesson title (${lesson.title})`,
       endpoint: `/lessons/${lesson.id}`,
@@ -191,7 +208,12 @@ async function syncCourse(courseFolder) {
       const upstreamEndpoint = `/lessons/${lesson.id}/content-items/${item.id}`;
 
       const localHtml = await fs.readFile(localPath, 'utf8');
-      const { data: upstreamItem } = await client.get(upstreamEndpoint);
+      let upstreamItem;
+      try {
+        ({ data: upstreamItem } = await client.get(upstreamEndpoint));
+      } catch (err) {
+        failCleanly(err, `Could not fetch content-item ${item.id} to diff against.`);
+      }
 
       const localNorm = normalizeHtml(localHtml);
       const upstreamNorm = normalizeHtml(upstreamItem.content_html || '');
@@ -233,11 +255,15 @@ async function syncCourse(courseFolder) {
       }
 
       if (shouldUpdate) {
-        await client.put(upstreamEndpoint, {
-          lesson_id: lesson.id,
-          content_html: localHtml,
-          type: 'HTML'
-        });
+        try {
+          await client.put(upstreamEndpoint, {
+            lesson_id: lesson.id,
+            content_html: localHtml,
+            type: 'HTML'
+          });
+        } catch (err) {
+          failCleanly(err, `Could not update content-item ${item.id}.`);
+        }
         console.log(chalk.green(`✅ Updated content-item ${item.id}`));
 
         if (argv['add-last-updated']) {
@@ -250,9 +276,18 @@ async function syncCourse(courseFolder) {
 
           const newDescription = `<p>Last updated: ${today}.</p>`;
 
-          await client.patch(`/lessons/${lesson.id}`, {
-            description_html: newDescription
-          });
+          try {
+            await client.patch(`/lessons/${lesson.id}`, {
+              description_html: newDescription
+            });
+          } catch (err) {
+            // The content-item write above has already landed. Stopping here
+            // leaves the lesson's "Last updated" stamp behind the content it
+            // describes, which is visible and fixable; carrying on would
+            // write that stamp into lessons-meta.json as though it had been
+            // accepted upstream.
+            failCleanly(err, `Updated content-item ${item.id}, but could not stamp lesson ${lesson.id} as updated.`);
+          }
 
           lesson.description_html = newDescription; // 🔥 update in-memory object
 
@@ -319,4 +354,4 @@ async function syncCourse(courseFolder) {
   }
 
   console.log(chalk.bold.green('\n✨ Sync complete.'));
-})();
+})().catch(err => failCleanly(err, 'Push failed.'));
