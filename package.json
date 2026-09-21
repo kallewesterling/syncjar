@@ -6,6 +6,7 @@
     "test": "node --test \"test/**/*.test.mjs\"",
     "pull": "node scripts/sync-skilljar-to-local.mjs",
     "pull:slugs": "node scripts/pull-slugs.mjs",
+    "pull:paths": "node scripts/pull-paths.mjs",
     "push": "node scripts/sync-local-to-skilljar.mjs",
     "generate:courses": "node scripts/generate-courses-json.mjs",
     "build:preview": "npm run pull && npm run generate:courses",

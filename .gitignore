@@ -10,8 +10,9 @@ public/data
 course-plaintext
 courses-plaintext
 
-# local sync folder
+# local sync folders
 local-skilljar
+local-skilljar-paths
 
 # OS stuff
 .DS_Store

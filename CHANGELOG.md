@@ -31,6 +31,28 @@ fact, so they group related commits rather than listing each one.
 
 ### Added
 
+- `scripts/pull-paths.mjs` (`npm run pull:paths`) — pulls Skilljar learning
+  paths to local files, mirroring the three objects the course pull already
+  mirrors: the path itself (`details.json`), its member courses
+  (`path-items.json`), and its per-domain publish records
+  (`published.json`). Writes to `PATH_CONTENT_PATH`, defaulting to
+  `local-skilljar-paths/`, and reuses `course-dirs.mjs` so a path directory is
+  named by id rather than title for the same reason a course directory is.
+  Supports `--path`, `--domain`, `--dry-run` and `--check`, matching the
+  existing pull scripts. Read-only upstream; `push` still does not write path
+  copy back. Two properties of Skilljar's path model are documented in the
+  script and the README rather than assumed away: `path-items` carries no
+  order field and is not returned in display order, and whether a path id
+  appears on one domain or several varies by instance — so `published.json` is
+  keyed by domain, and two different path ids can share a slug.
+- `failCleanly()` is now exported from `scripts/skilljar-client.mjs` instead of
+  being defined privately in `export-students.mjs`. It belongs with the client
+  whose errors it sanitizes: an unhandled axios rejection prints the
+  Authorization header, so every caller needs this and there is no reason for
+  each to carry its own copy.
+- `npm run pull:slugs` is now listed in the README's command table, which had
+  only ever documented the script by filename.
+
 - `npm run push` now refuses to run unless the course content repo
   (`COURSE_CONTENT_PATH`) is on `dev` or `main`. Skilljar holds one live state
   and has no concept of branches, so pushing from a feature branch whose
