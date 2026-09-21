@@ -5,7 +5,7 @@ import dotenv from 'dotenv';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import chalk from 'chalk';
-import { createSkilljarClient } from './skilljar-client.mjs';
+import { createSkilljarClient, failCleanly } from './skilljar-client.mjs';
 import { slugify, readCourseDirIndex, resolveCourseDirName } from './course-dirs.mjs';
 import { readLessonDirIndex, resolveLessonDirName } from './lesson-dirs.mjs';
 
@@ -96,9 +96,17 @@ async function fetchCourses() {
   let page = 1;
 
   while (true) {
-    const { data } = await client.get('/courses', {
-      params: { page, page_size: 100 }
-    });
+    // failCleanly() exits. Every fetch here feeds a write to the local tree,
+    // so continuing past a failed page would overwrite good local content
+    // with a partial pull.
+    let data;
+    try {
+      ({ data } = await client.get('/courses', {
+        params: { page, page_size: 100 }
+      }));
+    } catch (err) {
+      failCleanly(err, `Could not list courses (page ${page}).`);
+    }
 
     allCourses.push(...data.results);
     if (!data.next) break;
@@ -113,9 +121,14 @@ async function fetchLessons(courseId) {
   let page = 1;
 
   while (true) {
-    const { data } = await client.get('/lessons', {
-      params: { course_id: courseId, page, page_size: 100 }
-    });
+    let data;
+    try {
+      ({ data } = await client.get('/lessons', {
+        params: { course_id: courseId, page, page_size: 100 }
+      }));
+    } catch (err) {
+      failCleanly(err, `Could not list lessons for course ${courseId} (page ${page}).`);
+    }
 
     allLessons.push(...data.results);
     if (!data.next) break;
@@ -126,9 +139,14 @@ async function fetchLessons(courseId) {
 }
 
 async function fetchContentItems(lessonId) {
-  const { data } = await client.get(`/lessons/${lessonId}/content-items`, {
-    params: { include_content: true }
-  });
+  let data;
+  try {
+    ({ data } = await client.get(`/lessons/${lessonId}/content-items`, {
+      params: { include_content: true }
+    }));
+  } catch (err) {
+    failCleanly(err, `Could not fetch content items for lesson ${lessonId}.`);
+  }
   return data.results || [];
 }
 
@@ -291,4 +309,4 @@ async function syncCourse(course, dirName, table) {
   await withConcurrency(targets, 3, ({ course, dirName }) => syncCourse(course, dirName, table));
 
   process.stdout.write('\n🎉 All courses synced.\n');
-})();
+})().catch(err => failCleanly(err, 'Pull failed.'));

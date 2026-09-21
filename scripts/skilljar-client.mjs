@@ -40,6 +40,41 @@ function shouldRetry(error) {
 }
 
 /**
+ * Rebuilds a rejected axios error without the parts that carry credentials.
+ *
+ * An axios error holds `config`, `request` and `response.headers`, and
+ * `config.headers.Authorization` is `Basic <base64 of the API key>`. Node
+ * prints the whole object for an unhandled rejection, so a single missing
+ * try/catch — in a script, or in a throwaway `node -e` one-liner — puts the
+ * key in a terminal, a log, or a CI transcript, and a key that gets that far
+ * has to be treated as compromised and rotated.
+ *
+ * Callers are still expected to catch (see failCleanly below); this is the
+ * backstop for when one doesn't, because "remember to wrap every call" is a
+ * rule that only has to be forgotten once. What survives is what a human
+ * needs in order to act: status, a short body, the method and URL, and the
+ * original stack, none of which contain the key.
+ */
+export function redactError(error) {
+  const safe = new Error(error.message);
+  safe.stack = error.stack;
+  if (error.code !== undefined) safe.code = error.code;
+  safe.method = error.config?.method?.toUpperCase();
+  safe.url = error.config?.url;
+  if (error.response) {
+    // Deliberately not response.headers: Skilljar does not echo the
+    // Authorization header back, but nothing guarantees that, and no consumer
+    // in this repo reads them.
+    safe.response = {
+      status: error.response.status,
+      statusText: error.response.statusText,
+      data: error.response.data
+    };
+  }
+  return safe;
+}
+
+/**
  * Reports a failed Skilljar call and exits 1. **Does not return.**
  *
  * An unhandled axios rejection prints the whole request object — including the
@@ -88,12 +123,12 @@ export function createSkilljarClient() {
     async (error) => {
       const config = error.config;
       if (!config || !shouldRetry(error)) {
-        return Promise.reject(error);
+        return Promise.reject(redactError(error));
       }
 
       config._retryCount = config._retryCount ?? 0;
       if (config._retryCount >= MAX_RETRIES) {
-        return Promise.reject(error);
+        return Promise.reject(redactError(error));
       }
 
       const attempt = config._retryCount;

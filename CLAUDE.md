@@ -5,32 +5,36 @@ Local-first tooling for Chainguard's Skilljar instance (Chainguard Courses).
 ## CRITICAL: never let a raw axios error reach the console
 
 `scripts/skilljar-client.mjs` authenticates with HTTP Basic using `SKILLJAR_API_KEY`.
-An **unhandled axios rejection prints the entire request object**, including the
-`Authorization: Basic …` header, which contains the API key in trivially
-recoverable form.
+A raw axios error holds `config`, `request` and `response.headers`, and
+`config.headers.Authorization` is `Basic <base64 of the key>` — so an
+**unhandled rejection prints the key** in trivially recoverable form. Measured
+on a fake key before this was fixed: 12 occurrences in one stack trace.
 
 A key that reaches a terminal, a log, or a CI transcript has to be treated as
-compromised and rotated. Assume it will happen unless the call is wrapped.
+compromised and rotated.
 
-So:
+There are now two layers, and both matter:
 
-- **Every** call through `createSkilljarClient()` must be wrapped in `try/catch`.
-- Catch blocks print `err.response?.status` and a short body only. **Never** the
-  error object, `err.config`, `err.request`, or any headers.
-- This applies to throwaway `node -e` one-liners just as much as to committed
-  scripts. Ad-hoc commands are the easiest place to forget.
+1. **The client redacts on the way out.** `redactError()` rebuilds every
+   rejected error without `config`, `request` or `response.headers`, keeping
+   `message`, `code`, `method`, `url`, `response.status`, `response.statusText`,
+   `response.data` and the original stack. So even a forgotten `try/catch` — or
+   a throwaway `node -e` one-liner, which is the easiest place to forget —
+   cannot print the key. `test/skilljar-client.test.mjs` pins this, including a
+   test that asserts the *unredacted* shape does leak, so the others can't pass
+   vacuously.
+2. **Callers still catch.** Redaction stops the leak; it does not make a
+   half-finished sync a good outcome. Route failures through `failCleanly()`
+   (exported from `scripts/skilljar-client.mjs`), which prints status and a
+   short body and exits 1.
 
-Minimum safe shape for an ad-hoc command:
+So when adding a call:
 
-```bash
-node -e "import('./scripts/skilljar-client.mjs').then(async m=>{
-  const c=m.createSkilljarClient();
-  try{const r=await c.get('/ping');console.log(r.status,r.data);}
-  catch(e){console.error('HTTP',e?.response?.status,e?.response?.data??e.message);}
-})"
-```
-
-See `failCleanly()` in `scripts/revoke-access.mjs` for the pattern used in scripts.
+- Wrap it, and say in the catch's context string what was being attempted.
+- Print `err.response?.status` and a short body only. Never the error object,
+  `err.config`, or `err.request` — redaction is a backstop, not a licence.
+- Do not weaken `redactError()` to pass something through "just for debugging".
+  Add a field to the safe object instead, and check it cannot carry the header.
 
 ## API paths: no `/v1` prefix
 
