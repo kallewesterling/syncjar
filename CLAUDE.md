@@ -124,6 +124,29 @@ ours), so content costs one request per lesson no matter what; and lessons and
 content items carry no timestamps at all, so `modified_at` on a course is the
 only freshness signal the API offers.
 
+## `modified_at` is not proven to track content edits — keep it non-load-bearing
+
+`push` skips courses recorded as in sync (`push-state.mjs`), keyed on a local
+content hash *and* the course's upstream `modified_at`. It is tempting to lean
+harder on that timestamp — to skip on it alone, or to use it to decide what to
+pull. Don't, without settling this first.
+
+**It has never been established that editing a content item in the Skilljar
+web UI bumps its parent course's `modified_at`.** The obvious place to look is
+the content repo's nightly-sync history, and it cannot answer: across every
+sync commit, no *pre-existing* course has ever had its normalised content
+change upstream. The cell is empty. (The cases that look like evidence are
+newly added courses, where there is no prior record to compare, and
+trailing-newline churn from the pull's own writes, which `normalizeHtml`
+correctly calls unchanged.) Settling it needs a deliberate content-only push
+followed by a read of the course record.
+
+The current design is safe without an answer, because **a skipped course is
+never written to** — the worst a wrong skip does is not report drift, and
+`pull` is what reconciles drift anyway. Any future use of `modified_at` that
+decides to *write*, or to *not pull*, loses that property and needs the
+experiment run first.
+
 ## Check the checkout before pushing
 
 `push` writes to a live LMS with whatever code is checked out. A stale working

@@ -16,6 +16,47 @@ and version scheme in `CLAUDE.md`.
 
 ### Changed
 
+- `npm run push` now skips courses it has already verified as in sync, making
+  no requests for them at all. Batching and parallelism had brought a full
+  push to about 77 seconds, but the shape of the work was still wrong: every
+  run re-read 66 courses, 649 lessons and 822 content items in order to
+  discover that two of them had changed.
+
+  A course is skipped when its local content hashes to what it hashed to at
+  the last push *and* the course's upstream `modified_at` is unchanged. The
+  second check is free — the catalogue is already fetched in one request and
+  the timestamp comes with it. Measured on the full tree: **105 seconds to
+  5**, with 65 of 66 courses skipped.
+
+  Content is hashed *normalised*, so it agrees with what `push` itself calls
+  a change. This is not hypothetical: the content repo's history shows the
+  pull rewriting trailing newlines on files nobody edited, which under a raw
+  hash would rescan those courses forever.
+
+  Every unknown falls through to a full scan — no state file, a changed hash,
+  a moved timestamp, or a state file written by an older version. A course is
+  recorded only once it is *fully* in sync, so declining one prompt leaves the
+  rest of its changes to be found next run. State lives in
+  `.syncjar-push-state.json` (gitignored); deleting it is always safe.
+  `--no-skip` scans everything, and `--lesson` disables skipping since the
+  hash covers a whole course.
+
+  **On safety.** The obvious worry is the timestamp: if Skilljar does not bump
+  a course's `modified_at` when someone edits a content item in its web UI, a
+  skip could miss that edit. That question turns out to be unanswerable from
+  the available evidence — across every nightly-sync commit in the content
+  repo, no pre-existing course has ever had its normalised content change
+  upstream, so the case has never occurred, and lessons and content items
+  carry no timestamps of their own.
+
+  It does not matter, because **a skipped course is never written to**. The
+  worst a wrong skip can do is fail to *report* drift; it cannot overwrite it.
+  Reconciling upstream edits is `pull`'s job, and once a pull brings one down
+  the local hash changes and the course is scanned again. Against the previous
+  behaviour — which on finding such an edit offered to overwrite the newer
+  upstream copy with the older local one — skipping is the more conservative
+  of the two.
+
 - Content diffs are now shown in two columns, upstream on the left and local
   on the right, with changed words highlighted in place. They were a
   word-level diff over one long unbroken string, which had nowhere to put the
@@ -108,6 +149,9 @@ and version scheme in `CLAUDE.md`.
   because a YAML block indented with tabs and one indented with spaces are
   different documents and treating them as equal means the fix can never be
   pushed.
+- `scripts/push-state.mjs` — the record of which courses were last verified in
+  sync, the content fingerprint it is keyed on, and the reasoning for why a
+  wrong skip cannot lose an edit.
 - `scripts/render-diff.mjs` — reflows two copies of a content item onto
   comparable lines and lays the difference out in two columns or stacked.
 - `scripts/ui.mjs` — the status vocabulary every script reports with.
