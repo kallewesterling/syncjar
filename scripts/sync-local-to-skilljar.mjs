@@ -18,8 +18,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import chalk from 'chalk';
 import inquirer from 'inquirer';
-import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
+import { parsePushArgs } from './push-args.mjs';
 import { listCourseDirs } from './course-dirs.mjs';
 import { mapWithConcurrency } from './concurrency.mjs';
 import { fetchCourses, fetchLessons, fetchContentItems } from './skilljar-fetch.mjs';
@@ -44,53 +44,9 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Requests in flight during the scan. The client backs off on 429, so this is
-// a throughput choice rather than a safety one; 6 sits below the 12 the pull
-// already peaks at without complaint, and the scan is read-only besides.
-const DEFAULT_CONCURRENCY = 6;
-
-// CLI args
-const argv = yargs(hideBin(process.argv))
-  .option('course', { type: 'string', describe: 'Course folder slug to sync' })
-  .option('lesson', { type: 'string', describe: 'Lesson slug to sync' })
-  .option('dry-run', { type: 'boolean', describe: 'Preview changes without syncing' })
-  .option('force', { type: 'boolean', describe: 'Sync content-item changes without prompting' })
-  .option('force-titles', { type: 'boolean', describe: 'Sync course/lesson title changes without prompting (separate from --force)' })
-  .option('diff-only', { type: 'boolean', describe: 'Only show diffs, do not sync' })
-  .option('diff', { type: 'boolean', default: true, describe: 'Show diffs before syncing' })
-  .option('diff-style', {
-    type: 'string',
-    choices: ['auto', 'side-by-side', 'stacked'],
-    default: 'auto',
-    describe: 'Diff layout. auto uses two columns when the terminal is wide enough'
-  })
-  .option('concurrency', {
-    type: 'number',
-    default: DEFAULT_CONCURRENCY,
-    describe: 'Read requests in flight during the scan phase'
-  })
-  .option('no-skip', {
-    type: 'boolean',
-    default: false,
-    describe: 'Scan every course, even ones recorded as unchanged since the last push'
-  })
-  .option('state-file', {
-    type: 'string',
-    default: DEFAULT_STATE_FILE,
-    describe: 'Where to record which courses were last verified in sync'
-  })
-  .option('add-last-updated', {
-    type: 'boolean',
-    default: false,
-    describe: 'If set, updates the lesson description_html with today\'s date'
-  })
-  .option('allow-branch', {
-    type: 'array',
-    default: [],
-    describe: `Also allow pushing from this content-repo branch (repeatable). Allowed by default: ${DEFAULT_ALLOWED_BRANCHES.join(', ')}`
-  })
-  .help()
-  .argv;
+// CLI args. Defined in push-args.mjs so the parsing itself can be tested —
+// see the note there about `--no-skip` and yargs' boolean negation.
+const argv = parsePushArgs(hideBin(process.argv));
 
 // Load Skilljar auth
 import dotenv from 'dotenv';
@@ -192,7 +148,7 @@ async function scan(locals, state) {
     local.fingerprint = fingerprintCourse(local);
     local.upstreamModifiedAt = upstreamCourseById.get(local.courseDetails.id)?.modified_at ?? null;
 
-    const canSkip = !argv['no-skip']
+    const canSkip = !argv.fullScan
       // --lesson narrows to one lesson, but the fingerprint covers the whole
       // course, so a skip would answer a question that was not asked.
       && !argv.lesson
@@ -472,20 +428,28 @@ async function applyContentAction(action) {
   if (skipped.length) {
     console.log(muted(
       `   ${skipped.length} course(s) unchanged since the last push — skipped without a request`
-      + ` (--no-skip to scan everything)`
+      + ` (--full-scan to compare everything)`
     ));
   }
-  console.log(chalk.gray(
-    `   ${scanned.length} course(s) scanned: ${totalInSync} item(s) in sync, `
-    + `${actions.length} change(s) found in ${elapsed}s\n`
-  ));
+  if (scanned.length) {
+    console.log(chalk.gray(
+      `   ${scanned.length} course(s) scanned: ${totalInSync} item(s) in sync, `
+      + `${actions.length} change(s) found in ${elapsed}s\n`
+    ));
+  }
 
   for (const warning of warnings) console.warn(warn(warning));
   if (warnings.length) console.log();
 
   if (actions.length === 0) {
     await persistState(stateFile, state, scanned);
-    console.log(ok(chalk.bold('Everything is in sync.')));
+    // "In sync" and "did not look" are different claims, and a run that made
+    // no content requests must not be able to pass for a verified one. After
+    // a push, "did that land?" is a fair question to ask the tool, and the
+    // honest answer to it requires having compared bytes.
+    console.log(scanned.length === 0
+      ? ok(chalk.bold(`Nothing to push — ${skipped.length} course(s) skipped, no content compared.`))
+      : ok(chalk.bold('Everything is in sync.')));
     return;
   }
 

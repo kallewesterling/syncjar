@@ -14,6 +14,30 @@ and version scheme in `CLAUDE.md`.
 
 ## [Unreleased]
 
+### Fixed
+
+- `push`'s force-a-full-scan flag works. It was declared as `no-skip`, and
+  yargs reserves a leading `--no-` for boolean negation — so `--no-skip` set
+  `argv.skip = false` and left `argv['no-skip']` at its default, which is
+  what the skip logic read. The flag did nothing, while the summary line went
+  on advising people to pass it (#18).
+
+  The option is now `--full-scan`, outside the reserved namespace; `--no-skip`
+  is still honoured by reading where yargs actually puts it. Turning negation
+  off would have been the obvious fix and is not available, because
+  `--no-diff` is documented and works precisely *because* of negation.
+
+  No data was at risk — a skipped course is never written to — but the bug
+  defeated verification, which is the one thing the flag was for. Parsing now
+  lives in `scripts/push-args.mjs` so it can be tested, and it is: both
+  spellings, the absent-flag case (`!undefined` is true, which would have
+  forced a full scan on every run), and `--no-diff` as a regression guard.
+
+- A run that skipped every course no longer reports `Everything is in sync.`
+  That claim and "made no content requests at all" were indistinguishable in
+  the output. A run that compared nothing now says
+  `Nothing to push — N course(s) skipped, no content compared.`
+
 ### Changed
 
 - `npm run push` now skips courses it has already verified as in sync, making
@@ -38,8 +62,8 @@ and version scheme in `CLAUDE.md`.
   recorded only once it is *fully* in sync, so declining one prompt leaves the
   rest of its changes to be found next run. State lives in
   `.syncjar-push-state.json` (gitignored); deleting it is always safe.
-  `--no-skip` scans everything, and `--lesson` disables skipping since the
-  hash covers a whole course.
+  `--full-scan` compares everything, and `--lesson` disables skipping since
+  the hash covers a whole course.
 
   **On safety.** The obvious worry is the timestamp: if Skilljar does not bump
   a course's `modified_at` when someone edits a content item in its web UI, a
