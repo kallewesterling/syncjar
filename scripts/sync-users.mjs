@@ -19,7 +19,14 @@ const argv = yargs(hideBin(process.argv))
   .argv;
 
 // Auto-retries on 429/5xx, honouring the server's Retry-After header.
-const client = createSkilljarClient();
+//
+// Built on first use rather than at import. `createSkilljarClient()` throws
+// when SKILLJAR_API_KEY is unset, and the entry guard at the bottom of this
+// file exists so the merge logic can be imported by the tests — which it
+// could not be on any machine without a .env, including CI. The suite passed
+// locally for exactly that reason and failed the moment it ran anywhere else.
+let _client;
+const client = () => (_client ??= createSkilljarClient());
 
 const outputDir = path.join(__dirname, '..', 'public', 'data');
 const userListPath = path.join(outputDir, 'users.json');
@@ -31,7 +38,7 @@ async function fetchPaginated(endpoint, params = {}, pageSize = 100) {
     let allResults = [];
   
     while (true) {
-      const res = await client.get(endpoint, {
+      const res = await client().get(endpoint, {
         params: { ...params, page, page_size: pageSize }
       });
   

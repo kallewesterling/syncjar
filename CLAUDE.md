@@ -4,9 +4,27 @@ Local-first tooling for Chainguard's Skilljar instance (Chainguard Courses).
 
 ## Branches and versions
 
-`main` is the release branch and the repo default. `dev` is the integration
-branch. Work flows feature → `dev` → `main`, and PRs base on `dev` unless the
-change is a hotfix.
+`main` is the release branch. `dev` is the integration branch **and the repo
+default**. Work flows feature → `dev` → `main`, and PRs base on `dev` unless
+the change is a hotfix.
+
+`dev` is the default on purpose. A new PR — and any bot that opens one —
+targets the default branch, so making it `dev` means nothing arrives on
+`main` un-integrated. `chainguard-dev/courses` has the opposite arrangement
+and documents the cost: `main` is default there, so Dependabot, the weekly
+link check and the nightly Skilljar sync all open against `main`, those are
+the merges that go un-back-merged, and `dev` silently falls behind while git
+reports nothing wrong.
+
+Both branches are protected: pull requests required, no force-pushes, no
+deletions, and admins are not exempt. Approvals are not required, since a
+single maintainer cannot approve their own PR. CI (`.github/workflows/test.yaml`)
+runs the test suite on every PR to either branch.
+
+**A back-merge of `main` into `dev` must be merged with a merge commit, not
+squashed.** Squashing it produces a new commit with no link to `main`'s
+history, so `main` stops being an ancestor of `dev` and the next release
+cannot fast-forward — which is how the divergence starts over.
 
 **A branch names a role, never a version.** The integration branch was called
 `v2.0` until 2026-09-23, which collided with the release it was named after:
@@ -105,9 +123,26 @@ is not a syntax check — it is a full pull, overwriting the course content tree
 Use `node --check <file>` to check syntax, and `node --test` for behaviour.
 
 This is also why the logic worth testing lives in modules that export
-functions and do nothing on import (`push-plan.mjs`, `skilljar-fetch.mjs`,
-`course-dirs.mjs`, `branch-guard.mjs`, `concurrency.mjs`) rather than in the
-entry-point scripts. Put new logic there.
+functions and do nothing on import (`push-plan.mjs`, `push-args.mjs`,
+`push-state.mjs`, `skilljar-fetch.mjs`, `render-diff.mjs`, `course-dirs.mjs`,
+`branch-guard.mjs`, `concurrency.mjs`) rather than in the entry-point
+scripts. Put new logic there.
+
+Where a script must be importable — `sync-users.mjs` is, for its merge logic
+— guard the entry point:
+
+```js
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+```
+
+**And build the Skilljar client lazily, not at module scope.**
+`createSkilljarClient()` throws when `SKILLJAR_API_KEY` is unset, so an eager
+one makes the module unimportable on any machine without a `.env` — which
+is every CI runner. `sync-users.mjs` did exactly that, and the whole suite
+passed locally and failed on its first CI run.
+`test/import-without-credentials.test.mjs` now imports each of these modules
+in a child process with the key stripped and the cwd moved away from the
+repo, so a `.env` cannot mask it again.
 
 ## Read lists, not objects
 
