@@ -97,6 +97,33 @@ Full endpoint reference: <https://api.skilljar.com/docs/> (JavaScript-rendered, 
 - Student exports contain real names and email addresses. Delete them when the
   task is done; they regenerate from the API in one command.
 
+## Importing a script runs it
+
+Every file in `scripts/` ends in a top-level `(async () => { … })()`, so
+`import()`ing one executes it. `node -e "import('./scripts/sync-skilljar-to-local.mjs')"`
+is not a syntax check — it is a full pull, overwriting the course content tree.
+Use `node --check <file>` to check syntax, and `node --test` for behaviour.
+
+This is also why the logic worth testing lives in modules that export
+functions and do nothing on import (`push-plan.mjs`, `skilljar-fetch.mjs`,
+`course-dirs.mjs`, `branch-guard.mjs`, `concurrency.mjs`) rather than in the
+entry-point scripts. Put new logic there.
+
+## Read lists, not objects
+
+Skilljar exposes courses, lessons and content items both per-object and as
+paginated lists. The per-object form reads naturally in a loop, and `push` was
+written that way: 1,537 round trips at ~380ms, about ten minutes to check 66
+courses. `scripts/skilljar-fetch.mjs` holds the list reads both sync scripts
+use — prefer them, and do not add a `GET /courses/{id}` or `GET /lessons/{id}`
+to a loop.
+
+Two dead ends recorded there so they aren't rediscovered: `GET /lessons`
+carries a `content_html` field that is empty for `MODULAR` lessons (all of
+ours), so content costs one request per lesson no matter what; and lessons and
+content items carry no timestamps at all, so `modified_at` on a course is the
+only freshness signal the API offers.
+
 ## Check the checkout before pushing
 
 `push` writes to a live LMS with whatever code is checked out. A stale working
