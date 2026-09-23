@@ -6,9 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Entries for 1.0.0 and earlier were reconstructed from git history after the
-fact, so they group related commits rather than listing each one.
+fact, so they group related commits rather than listing each one. Nothing was
+tagged before 2.0.0, `1.0.0` included — it exists only as the heading below.
+
+Releases are tags on `main`. `dev` is the integration branch; see the branch
+and version scheme in `CLAUDE.md`.
 
 ## [Unreleased]
+
+### Changed
+
+- The integration branch is now `dev`, renamed from `v2.0`. A permanent branch
+  named after a single release collides with the release as soon as the next
+  one comes round: everything merged since 1.0.0 was sitting on a branch called
+  `v2.0`, unreleased and untagged, so there was no answer to whether new work
+  was 2.0 or 2.1 that wasn't also a question about the branch name. `dev` names
+  the role, and 2.1 will be a tag rather than a branch.
+- `package.json` is named `syncjar` rather than the leftover
+  `test-local-skilljar`, and carries the README's one-line description.
 
 ### Security
 

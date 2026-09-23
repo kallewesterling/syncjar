@@ -2,6 +2,37 @@
 
 Local-first tooling for Chainguard's Skilljar instance (Chainguard Courses).
 
+## Branches and versions
+
+`main` is the release branch and the repo default. `dev` is the integration
+branch. Work flows feature → `dev` → `main`, and PRs base on `dev` unless the
+change is a hotfix.
+
+**A branch names a role, never a version.** The integration branch was called
+`v2.0` until 2026-09-23, which collided with the release it was named after:
+the branch is permanent and the version is not, so "is this 2.1?" had no
+answer that wasn't also a question about the branch. It is `dev` now, and a
+`v2.1` branch should not be created when 2.1 comes round — 2.1 is a tag on
+`main`.
+
+Releases are tags on `main`, cut from a merged `dev`:
+
+```bash
+# on main, after dev has merged
+git tag -a v2.0.0 -m "syncjar 2.0.0" && git push origin v2.0.0
+```
+
+At that moment, and not before:
+
+- promote `## [Unreleased]` in `CHANGELOG.md` to `## [X.Y.Z] - YYYY-MM-DD`,
+  and open a fresh empty `[Unreleased]` above it;
+- set `version` in `package.json` to match the tag.
+
+`package.json` therefore lags `dev` on purpose: it records the last release,
+not the work in flight. Nothing had ever been tagged before 2.0.0 — including
+`1.0.0`, which exists only as a `CHANGELOG.md` heading — so treat the tag
+history as starting there.
+
 ## CRITICAL: never let a raw axios error reach the console
 
 `scripts/skilljar-client.mjs` authenticates with HTTP Basic using `SKILLJAR_API_KEY`.
@@ -77,7 +108,7 @@ overwrite live content while reporting success.
 So before any push, confirm the branch is current with its remote:
 
 ```bash
-git fetch origin && git status -sb   # want: "## v2.0...origin/v2.0" with no ahead/behind
+git fetch origin && git status -sb   # want: "## dev...origin/dev" with no ahead/behind
 ```
 
 A bare `## <branch>` with no `...origin/<branch>` means the branch has no
