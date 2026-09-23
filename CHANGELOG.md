@@ -18,6 +18,16 @@ and version scheme in `CLAUDE.md`.
 
 ### Fixed
 
+- `sync-users.mjs` built its Skilljar client at module scope, so importing it
+  threw without `SKILLJAR_API_KEY` — and `test/sync-users.test.mjs` imports it
+  for the merge logic. The suite therefore passed on any machine with a `.env`
+  and failed everywhere else, which the first CI run demonstrated immediately.
+  The client is now built on first use. `test/import-without-credentials.test.mjs`
+  imports every module the tests touch in a child process with the key
+  stripped and the working directory moved away from the repo, since
+  `dotenv.config()` reads `<cwd>/.env` and would otherwise hand the test the
+  very credentials it is checking for the absence of.
+
 - `push`'s force-a-full-scan flag works. It was declared as `no-skip`, and
   yargs reserves a leading `--no-` for boolean negation — so `--no-skip` set
   `argv.skip = false` and left `argv['no-skip']` at its default, which is

@@ -123,9 +123,26 @@ is not a syntax check — it is a full pull, overwriting the course content tree
 Use `node --check <file>` to check syntax, and `node --test` for behaviour.
 
 This is also why the logic worth testing lives in modules that export
-functions and do nothing on import (`push-plan.mjs`, `skilljar-fetch.mjs`,
-`course-dirs.mjs`, `branch-guard.mjs`, `concurrency.mjs`) rather than in the
-entry-point scripts. Put new logic there.
+functions and do nothing on import (`push-plan.mjs`, `push-args.mjs`,
+`push-state.mjs`, `skilljar-fetch.mjs`, `render-diff.mjs`, `course-dirs.mjs`,
+`branch-guard.mjs`, `concurrency.mjs`) rather than in the entry-point
+scripts. Put new logic there.
+
+Where a script must be importable — `sync-users.mjs` is, for its merge logic
+— guard the entry point:
+
+```js
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+```
+
+**And build the Skilljar client lazily, not at module scope.**
+`createSkilljarClient()` throws when `SKILLJAR_API_KEY` is unset, so an eager
+one makes the module unimportable on any machine without a `.env` — which
+is every CI runner. `sync-users.mjs` did exactly that, and the whole suite
+passed locally and failed on its first CI run.
+`test/import-without-credentials.test.mjs` now imports each of these modules
+in a child process with the key stripped and the cwd moved away from the
+repo, so a `.env` cannot mask it again.
 
 ## Read lists, not objects
 
