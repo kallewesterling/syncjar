@@ -1,3 +1,18 @@
+/**
+ * sync-local-to-skilljar.mjs — push local course content upstream.
+ *
+ * Runs in two phases. The **scan** compares every local course against
+ * upstream and produces a plan; it makes no writes, so it runs in parallel.
+ * The **apply** walks that plan, shows each diff and prompts, and writes; it
+ * is sequential, because prompts are.
+ *
+ * It used to be one interleaved pass, which forced everything into the
+ * sequential shape the prompts needed — 1,537 round trips at ~380ms, roughly
+ * ten minutes, with a prompt surfacing every minute and a half. Splitting the
+ * phases cuts that to 716 requests (see skilljar-fetch.mjs) run 6 at a time,
+ * and puts the whole change list in front of the operator before the first
+ * prompt rather than dribbling it out over ten minutes.
+ */
 import fs from 'fs-extra';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -7,6 +22,9 @@ import inquirer from 'inquirer';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import { listCourseDirs } from './course-dirs.mjs';
+import { mapWithConcurrency } from './concurrency.mjs';
+import { fetchCourses, fetchLessons, fetchContentItems } from './skilljar-fetch.mjs';
+import { planCourse } from './push-plan.mjs';
 import {
   DEFAULT_ALLOWED_BRANCHES,
   getCurrentBranch,
@@ -17,6 +35,11 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Requests in flight during the scan. The client backs off on 429, so this is
+// a throughput choice rather than a safety one; 6 sits below the 12 the pull
+// already peaks at without complaint, and the scan is read-only besides.
+const DEFAULT_CONCURRENCY = 6;
+
 // CLI args
 const argv = yargs(hideBin(process.argv))
   .option('course', { type: 'string', describe: 'Course folder slug to sync' })
@@ -26,6 +49,11 @@ const argv = yargs(hideBin(process.argv))
   .option('force-titles', { type: 'boolean', describe: 'Sync course/lesson title changes without prompting (separate from --force)' })
   .option('diff-only', { type: 'boolean', describe: 'Only show diffs, do not sync' })
   .option('diff', { type: 'boolean', default: true, describe: 'Show diffs before syncing' })
+  .option('concurrency', {
+    type: 'number',
+    default: DEFAULT_CONCURRENCY,
+    describe: 'Read requests in flight during the scan phase'
+  })
   .option('add-last-updated', {
     type: 'boolean',
     default: false,
@@ -46,26 +74,6 @@ dotenv.config();
 
 // Auto-retries on 429/5xx, honouring the server's Retry-After header.
 const client = createSkilljarClient();
-
-// Skilljar and the local copy wrap and indent markup differently without
-// anyone editing anything, so comparing them literally reports changes nobody
-// made. Collapsing runs of whitespace removes that noise.
-//
-// Inside <pre>, whitespace is the content. A YAML block indented with tabs and
-// the same block indented with spaces are different documents, because YAML
-// forbids the tab, and a reader who copies the first one gets a parse error.
-// Collapsing there reports such a block as already in sync, so the fix can
-// never be pushed. Keep those spans exactly, and settle only line endings,
-// which change in transport rather than in an edit.
-function normalizeHtml(html = '') {
-  // Odd indices are the captured <pre> spans; even indices are everything else.
-  return String(html)
-    .split(/(<pre\b[\s\S]*?<\/pre>)/i)
-    .map((part, i) =>
-      i % 2 ? part.replace(/\r\n?/g, '\n') : part.replace(/\s+/g, ' '))
-    .join('')
-    .trim();
-}
 
 // normalizeHtml collapses each block of markup onto one long line, so a
 // line-level diff flags any real edit as "whole line removed, whole line
@@ -97,216 +105,248 @@ function printDiff(oldValue, newValue) {
   process.stdout.write('\n');
 }
 
-// Diffs a plain text field (e.g. a title) against its upstream value and,
-// depending on the --diff/--diff-only/--dry-run/--force-titles flags, prompts
-// before PATCHing `endpoint` with `{ [field]: localValue }`. Titles use their
-// own --force-titles flag rather than --force, since a title is more visible
-// and consequential than a content-item HTML tweak and warrants a separate,
-// explicit opt-in out of unprompted pushes.
-async function syncTextField({ label, endpoint, field, localValue, upstreamValue }) {
-  if ((localValue || '').trim() === (upstreamValue || '').trim()) {
-    console.log(`✅ ${label} is in sync.`);
-    return;
-  }
-
-  console.log(`❗ Difference detected in ${chalk.yellow(label)}`);
-
-  if (argv.diff) {
-    console.log(chalk.gray('📄 Showing unified diff:\n'));
-    printDiff(upstreamValue, localValue);
-    console.log(); // newline
-  }
-
-  if (argv['diff-only']) {
-    console.log(chalk.gray(`🔍 DIFF ONLY: Skipping ${label}\n`));
-    return;
-  }
-
-  if (argv['dry-run']) {
-    console.log(chalk.gray(`🔍 DRY RUN: Would update ${label}\n`));
-    return;
-  }
-
-  let shouldUpdate = argv['force-titles'];
-  if (!shouldUpdate) {
-    const answer = await inquirer.prompt([
-      {
-        type: 'confirm',
-        name: 'confirm',
-        message: `Push local change to ${label}? ("${upstreamValue}" → "${localValue}")`,
-        default: false
-      }
-    ]);
-    shouldUpdate = answer.confirm;
-  }
-
-  if (shouldUpdate) {
-    // failCleanly() exits. Stopping at the first failed write is the point:
-    // the operator has been answering prompts one at a time, and carrying on
-    // past a failure would report later successes as if this one had worked.
-    try {
-      await client.patch(endpoint, { [field]: localValue });
-    } catch (err) {
-      failCleanly(err, `Could not update ${label}.`);
-    }
-    console.log(chalk.green(`✅ Updated ${label}`));
-  } else {
-    console.log(chalk.gray(`⏭️ Skipped ${label}`));
-  }
+// Progress goes to stderr so that piping the diff output somewhere doesn't
+// interleave it with a progress counter being overwritten in place.
+function progress(done, total, label) {
+  if (!process.stderr.isTTY) return;
+  process.stderr.write(`\r\x1B[2K  ${chalk.gray(`[${done}/${total}]`)} ${label}`);
 }
 
-async function syncCourse(courseFolder) {
-  const courseDir = path.join(process.env.COURSE_CONTENT_PATH, courseFolder) || path.join(__dirname, '..', 'local-skilljar', courseFolder);
+function endProgress() {
+  if (process.stderr.isTTY) process.stderr.write('\r\x1B[2K');
+}
+
+// ---------------------------------------------------------------------------
+// Scan phase
+// ---------------------------------------------------------------------------
+
+/**
+ * Reads one course's local tree. Returns null for a directory that isn't a
+ * course, which is not an error: the content root holds generated JSON and
+ * whatever the operating system leaves behind.
+ */
+async function readLocalCourse(coursesDir, courseFolder) {
+  const courseDir = path.join(coursesDir, courseFolder);
   const detailsPath = path.join(courseDir, 'details.json');
   const lessonsMetaPath = path.join(courseDir, 'lessons-meta.json');
 
   if (!(await fs.pathExists(detailsPath)) || !(await fs.pathExists(lessonsMetaPath))) {
     console.warn(`⚠️ Skipping course "${courseFolder}" — missing details or metadata`);
-    return;
+    return null;
   }
 
-  const courseDetails = await fs.readJson(detailsPath);
-  const lessons = await fs.readJson(lessonsMetaPath);
+  const [courseDetails, lessons] = await Promise.all([
+    fs.readJson(detailsPath),
+    fs.readJson(lessonsMetaPath)
+  ]);
 
-  if (!argv.lesson) {
-    let upstreamCourse;
-    try {
-      ({ data: upstreamCourse } = await client.get(`/courses/${courseDetails.id}`));
-    } catch (err) {
-      failCleanly(err, `Could not fetch course ${courseDetails.id} ("${courseDetails.title}") to diff against.`);
-    }
-    await syncTextField({
-      label: `course title (${courseDetails.title})`,
-      endpoint: `/courses/${courseDetails.id}`,
-      field: 'title',
-      localValue: courseDetails.title,
-      upstreamValue: upstreamCourse.title
-    });
-  }
-
+  // Read every local file up front. This is disk, not network, and having it
+  // in hand keeps planCourse() pure.
+  const localHtmlByItemId = new Map();
   for (const lesson of lessons) {
     if (argv.lesson && lesson.slug !== argv.lesson) continue;
-
-    console.log(`\n📘 Lesson: ${chalk.bold(courseDetails.title)} ${chalk.cyan(lesson.title)}`);
-
-    let upstreamLesson;
-    try {
-      ({ data: upstreamLesson } = await client.get(`/lessons/${lesson.id}`));
-    } catch (err) {
-      failCleanly(err, `Could not fetch lesson ${lesson.id} ("${lesson.title}") to diff against.`);
-    }
-    await syncTextField({
-      label: `lesson title (${lesson.title})`,
-      endpoint: `/lessons/${lesson.id}`,
-      field: 'title',
-      localValue: lesson.title,
-      upstreamValue: upstreamLesson.title
-    });
-
     for (const item of lesson.content_items) {
-      const localPath = path.join(courseDir, item.file);
-      const upstreamEndpoint = `/lessons/${lesson.id}/content-items/${item.id}`;
-
-      const localHtml = await fs.readFile(localPath, 'utf8');
-      let upstreamItem;
+      if (!item.id) continue;
       try {
-        ({ data: upstreamItem } = await client.get(upstreamEndpoint));
-      } catch (err) {
-        failCleanly(err, `Could not fetch content-item ${item.id} to diff against.`);
+        localHtmlByItemId.set(item.id, await fs.readFile(path.join(courseDir, item.file), 'utf8'));
+      } catch {
+        // planCourse() reports this as a warning; a stray entry in
+        // lessons-meta.json is not a reason to abandon the run.
       }
-
-      const localNorm = normalizeHtml(localHtml);
-      const upstreamNorm = normalizeHtml(upstreamItem.content_html || '');
-
-      if (localNorm === upstreamNorm) {
-        console.log(`✅ content-item ${item.id} is in sync.`);
-        continue;
-      }
-
-      console.log(`❗ Difference detected in content-item ${chalk.yellow(item.id)}`);
-
-      if (argv.diff) {
-        console.log(chalk.gray('📄 Showing unified diff:\n'));
-        printDiff(upstreamItem.content_html, localHtml);
-        console.log(); // newline
-      }
-
-      if (argv['diff-only']) {
-        console.log(chalk.gray(`🔍 DIFF ONLY: Skipping content-item ${item.id}\n`));
-        continue;
-      }
-
-      if (argv['dry-run']) {
-        console.log(chalk.gray(`🔍 DRY RUN: Would update content-item ${item.id}\n`));
-        continue;
-      }
-
-      let shouldUpdate = argv.force;
-      if (!argv.force) {
-        const answer = await inquirer.prompt([
-          {
-            type: 'confirm',
-            name: 'confirm',
-            message: `Push local changes to content-item ${item.id}?`,
-            default: false
-          }
-        ]);
-        shouldUpdate = answer.confirm;
-      }
-
-      if (shouldUpdate) {
-        try {
-          await client.put(upstreamEndpoint, {
-            lesson_id: lesson.id,
-            content_html: localHtml,
-            type: 'HTML'
-          });
-        } catch (err) {
-          failCleanly(err, `Could not update content-item ${item.id}.`);
-        }
-        console.log(chalk.green(`✅ Updated content-item ${item.id}`));
-
-        if (argv['add-last-updated']) {
-          const today = new Date().toLocaleDateString('en-US', {
-            day: 'numeric',
-            month: 'long',
-            year: 'numeric',
-            timeZone: 'UTC'
-          });
-
-          const newDescription = `<p>Last updated: ${today}.</p>`;
-
-          try {
-            await client.patch(`/lessons/${lesson.id}`, {
-              description_html: newDescription
-            });
-          } catch (err) {
-            // The content-item write above has already landed. Stopping here
-            // leaves the lesson's "Last updated" stamp behind the content it
-            // describes, which is visible and fixable; carrying on would
-            // write that stamp into lessons-meta.json as though it had been
-            // accepted upstream.
-            failCleanly(err, `Updated content-item ${item.id}, but could not stamp lesson ${lesson.id} as updated.`);
-          }
-
-          lesson.description_html = newDescription; // 🔥 update in-memory object
-
-          console.log(chalk.cyan(`📝 Updated lesson metadata with 'Last updated: ${today}'`));
-        }
-      } else {
-        console.log(chalk.gray(`⏭️ Skipped content-item ${item.id}`));
-      }
-
     }
   }
 
-  if (argv['add-last-updated']) {
-    await fs.outputJson(lessonsMetaPath, lessons, { spaces: 2 });
-    console.log(chalk.gray(`📁 Updated lessons-meta.json to reflect updated metadata.`));
-  }
+  return { courseFolder, courseDir, lessonsMetaPath, courseDetails, lessons, localHtmlByItemId };
 }
 
+/**
+ * Compares every local course against upstream and returns one plan.
+ *
+ * Fetches in two flat stages rather than nesting course → lesson → item. A
+ * flat stage keeps every worker busy: nesting leaves the last few lessons of
+ * a large course running alone while the limiter holds back work from other
+ * courses that could have started.
+ */
+async function scan(locals) {
+  const limit = Math.max(1, argv.concurrency);
+
+  // Stage 0 — one request for the whole catalog. Replaces a GET per course.
+  const upstreamCourses = await fetchCourses(client);
+  const upstreamCourseById = new Map(upstreamCourses.map(c => [c.id, c]));
+
+  // Stage 1 — lessons, one request per course. Carries every lesson title.
+  let done = 0;
+  const lessonsPerCourse = await mapWithConcurrency(locals, limit, async (local) => {
+    const upstream = await fetchLessons(client, local.courseDetails.id);
+    progress(++done, locals.length, `reading lessons — ${local.courseFolder}`);
+    return upstream;
+  });
+  endProgress();
+
+  // Stage 2 — content items, one request per lesson, content included.
+  //
+  // Only lessons the plan will actually look at: --lesson narrows this from
+  // 649 requests to one.
+  const lessonTargets = [];
+  locals.forEach((local, i) => {
+    const localIds = new Set(
+      local.lessons
+        .filter(l => !argv.lesson || l.slug === argv.lesson)
+        .map(l => l.id)
+    );
+    for (const upstreamLesson of lessonsPerCourse[i]) {
+      if (localIds.has(upstreamLesson.id)) lessonTargets.push(upstreamLesson);
+    }
+  });
+
+  done = 0;
+  const itemsPerLesson = await mapWithConcurrency(lessonTargets, limit, async (lesson) => {
+    const items = await fetchContentItems(client, lesson.id);
+    progress(++done, lessonTargets.length, `reading content — ${lesson.title}`);
+    return items;
+  });
+  endProgress();
+
+  const upstreamItemsByLessonId = new Map();
+  lessonTargets.forEach((lesson, i) => {
+    upstreamItemsByLessonId.set(lesson.id, new Map(itemsPerLesson[i].map(item => [item.id, item])));
+  });
+
+  // Plan. Pure from here on.
+  const actions = [];
+  const warnings = [];
+  const summaries = [];
+
+  locals.forEach((local, i) => {
+    const upstreamCourse = upstreamCourseById.get(local.courseDetails.id);
+    if (!upstreamCourse) {
+      warnings.push(
+        `course ${local.courseDetails.id} ("${local.courseFolder}") is not in the Skilljar catalog — pull to reconcile`
+      );
+      return;
+    }
+
+    const plan = planCourse({
+      courseDir: local.courseFolder,
+      courseDetails: local.courseDetails,
+      lessons: local.lessons,
+      upstreamCourse,
+      upstreamLessonsById: new Map(lessonsPerCourse[i].map(l => [l.id, l])),
+      upstreamItemsByLessonId,
+      localHtmlByItemId: local.localHtmlByItemId,
+      lessonFilter: argv.lesson || null
+    });
+
+    // Carry the course through on each action so the apply phase can write
+    // lessons-meta.json back without re-deriving where it came from.
+    for (const action of plan.actions) actions.push({ ...action, local });
+    warnings.push(...plan.warnings);
+    summaries.push({
+      title: local.courseDetails.title,
+      changes: plan.actions.length,
+      inSync: plan.inSyncCount
+    });
+  });
+
+  return { actions, warnings, summaries };
+}
+
+// ---------------------------------------------------------------------------
+// Apply phase
+// ---------------------------------------------------------------------------
+
+async function applyTextAction(action) {
+  // Titles use their own --force-titles flag rather than --force, since a
+  // title is more visible and consequential than a content-item HTML tweak
+  // and warrants a separate, explicit opt-in out of unprompted pushes.
+  let shouldUpdate = argv['force-titles'];
+  if (!shouldUpdate) {
+    const answer = await inquirer.prompt([{
+      type: 'confirm',
+      name: 'confirm',
+      message: `Push local change to ${action.label}? ("${action.upstreamValue}" → "${action.localValue}")`,
+      default: false
+    }]);
+    shouldUpdate = answer.confirm;
+  }
+
+  if (!shouldUpdate) {
+    console.log(chalk.gray(`⏭️ Skipped ${action.label}`));
+    return false;
+  }
+
+  // failCleanly() exits. Stopping at the first failed write is the point:
+  // the operator has been answering prompts one at a time, and carrying on
+  // past a failure would report later successes as if this one had worked.
+  try {
+    await client.patch(action.endpoint, { [action.field]: action.localValue });
+  } catch (err) {
+    failCleanly(err, `Could not update ${action.label}.`);
+  }
+  console.log(chalk.green(`✅ Updated ${action.label}`));
+  return true;
+}
+
+async function applyContentAction(action) {
+  let shouldUpdate = argv.force;
+  if (!shouldUpdate) {
+    const answer = await inquirer.prompt([{
+      type: 'confirm',
+      name: 'confirm',
+      message: `Push local changes to ${action.label}?`,
+      default: false
+    }]);
+    shouldUpdate = answer.confirm;
+  }
+
+  if (!shouldUpdate) {
+    console.log(chalk.gray(`⏭️ Skipped ${action.label}`));
+    return false;
+  }
+
+  try {
+    await client.put(action.endpoint, {
+      lesson_id: action.lessonId,
+      content_html: action.localValue,
+      type: 'HTML'
+    });
+  } catch (err) {
+    failCleanly(err, `Could not update ${action.label}.`);
+  }
+  console.log(chalk.green(`✅ Updated ${action.label}`));
+
+  if (argv['add-last-updated']) {
+    const today = new Date().toLocaleDateString('en-US', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      timeZone: 'UTC'
+    });
+    const newDescription = `<p>Last updated: ${today}.</p>`;
+
+    try {
+      await client.patch(`/lessons/${action.lessonId}`, { description_html: newDescription });
+    } catch (err) {
+      // The content-item write above has already landed. Stopping here
+      // leaves the lesson's "Last updated" stamp behind the content it
+      // describes, which is visible and fixable; carrying on would write
+      // that stamp into lessons-meta.json as though it had been accepted
+      // upstream.
+      failCleanly(err, `Updated ${action.label}, but could not stamp lesson ${action.lessonId} as updated.`);
+    }
+
+    action.lesson.description_html = newDescription; // 🔥 update in-memory object
+    action.local.stampedLessons = true;
+    console.log(chalk.cyan(`📝 Updated lesson metadata with 'Last updated: ${today}'`));
+  }
+
+  return true;
+}
+
+// ---------------------------------------------------------------------------
 // MAIN
+// ---------------------------------------------------------------------------
+
 (async () => {
   const coursesDir = process.env.COURSE_CONTENT_PATH || path.join(__dirname, '..', 'local-skilljar');
 
@@ -349,8 +389,70 @@ async function syncCourse(courseFolder) {
     ? [argv.course]
     : await listCourseDirs(coursesDir);
 
-  for (const courseFolder of courseFolders) {
-    await syncCourse(courseFolder);
+  const locals = (await Promise.all(
+    courseFolders.map(folder => readLocalCourse(coursesDir, folder))
+  )).filter(Boolean);
+
+  if (locals.length === 0) {
+    console.log(chalk.yellow('Nothing to scan.'));
+    return;
+  }
+
+  console.log(chalk.bold(`\n🔍 Scanning ${locals.length} course(s)…`));
+  const started = Date.now();
+  const { actions, warnings, summaries } = await scan(locals);
+  const elapsed = ((Date.now() - started) / 1000).toFixed(1);
+
+  const totalInSync = summaries.reduce((n, s) => n + s.inSync, 0);
+  console.log(chalk.gray(
+    `   ${totalInSync} item(s) already in sync, ${actions.length} change(s) found in ${elapsed}s\n`
+  ));
+
+  for (const warning of warnings) console.warn(chalk.yellow(`⚠️  ${warning}`));
+  if (warnings.length) console.log();
+
+  if (actions.length === 0) {
+    console.log(chalk.bold.green('✨ Everything is in sync.'));
+    return;
+  }
+
+  // The whole change list up front, so the operator knows what they are about
+  // to be asked about before the first prompt rather than after the last.
+  console.log(chalk.bold('Changes to review:'));
+  for (const summary of summaries.filter(s => s.changes > 0)) {
+    console.log(`  ${chalk.yellow('❗')} ${summary.title} — ${summary.changes} change(s)`);
+  }
+
+  for (const action of actions) {
+    console.log(`\n📘 ${chalk.bold(action.local.courseDetails.title)} — ${chalk.yellow(action.label)}`);
+
+    if (argv.diff) {
+      console.log(chalk.gray('📄 Showing unified diff:\n'));
+      printDiff(action.upstreamValue, action.localValue);
+      console.log(); // newline
+    }
+
+    if (argv['diff-only']) {
+      console.log(chalk.gray(`🔍 DIFF ONLY: Skipping ${action.label}`));
+      continue;
+    }
+
+    if (argv['dry-run']) {
+      console.log(chalk.gray(`🔍 DRY RUN: Would update ${action.label}`));
+      continue;
+    }
+
+    if (action.kind === 'text') await applyTextAction(action);
+    else await applyContentAction(action);
+  }
+
+  // One write per course, after all its stamps have landed upstream.
+  if (argv['add-last-updated'] && !argv['dry-run'] && !argv['diff-only']) {
+    for (const local of new Set(actions.map(a => a.local))) {
+      if (!local.stampedLessons) continue;
+      await fs.outputJson(local.lessonsMetaPath, local.lessons, { spaces: 2 });
+      console.log(chalk.gray(`📁 Updated ${local.courseFolder}/lessons-meta.json to reflect updated metadata.`));
+    }
   }
 
   console.log(chalk.bold.green('\n✨ Sync complete.'));

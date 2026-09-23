@@ -8,6 +8,8 @@ import chalk from 'chalk';
 import { createSkilljarClient, failCleanly } from './skilljar-client.mjs';
 import { slugify, readCourseDirIndex, resolveCourseDirName } from './course-dirs.mjs';
 import { readLessonDirIndex, resolveLessonDirName } from './lesson-dirs.mjs';
+import { mapWithConcurrency } from './concurrency.mjs';
+import { fetchCourses, fetchLessons, fetchContentItems } from './skilljar-fetch.mjs';
 
 dotenv.config();
 
@@ -90,65 +92,9 @@ class SyncTable {
   }
 }
 
-// Fetch paginated courses
-async function fetchCourses() {
-  let allCourses = [];
-  let page = 1;
-
-  while (true) {
-    // failCleanly() exits. Every fetch here feeds a write to the local tree,
-    // so continuing past a failed page would overwrite good local content
-    // with a partial pull.
-    let data;
-    try {
-      ({ data } = await client.get('/courses', {
-        params: { page, page_size: 100 }
-      }));
-    } catch (err) {
-      failCleanly(err, `Could not list courses (page ${page}).`);
-    }
-
-    allCourses.push(...data.results);
-    if (!data.next) break;
-    page += 1;
-  }
-
-  return allCourses;
-}
-
-async function fetchLessons(courseId) {
-  let allLessons = [];
-  let page = 1;
-
-  while (true) {
-    let data;
-    try {
-      ({ data } = await client.get('/lessons', {
-        params: { course_id: courseId, page, page_size: 100 }
-      }));
-    } catch (err) {
-      failCleanly(err, `Could not list lessons for course ${courseId} (page ${page}).`);
-    }
-
-    allLessons.push(...data.results);
-    if (!data.next) break;
-    page += 1;
-  }
-
-  return allLessons;
-}
-
-async function fetchContentItems(lessonId) {
-  let data;
-  try {
-    ({ data } = await client.get(`/lessons/${lessonId}/content-items`, {
-      params: { include_content: true }
-    }));
-  } catch (err) {
-    failCleanly(err, `Could not fetch content items for lesson ${lessonId}.`);
-  }
-  return data.results || [];
-}
+// The three list reads now live in skilljar-fetch.mjs, because push needs the
+// same ones: it used to fetch each course, lesson and content item by id, one
+// round trip apiece, which is what made it take ten minutes.
 
 async function withConcurrency(items, limit, fn) {
   const executing = new Set();
@@ -158,23 +104,6 @@ async function withConcurrency(items, limit, fn) {
     if (executing.size >= limit) await Promise.race(executing);
   }
   return Promise.allSettled([...executing]);
-}
-
-// Like items.map(fn) with Promise.all, but bounds how many run at once and
-// preserves result order. Keeps us from firing hundreds of content-item
-// requests in a single burst (which is what trips Skilljar's rate limit).
-async function mapWithConcurrency(items, limit, fn) {
-  const results = new Array(items.length);
-  let next = 0;
-  async function worker() {
-    while (next < items.length) {
-      const idx = next++;
-      results[idx] = await fn(items[idx], idx);
-    }
-  }
-  const workers = Array.from({ length: Math.min(limit, items.length) }, worker);
-  await Promise.all(workers);
-  return results;
 }
 
 // Max content-item requests in flight per course at any moment.
@@ -189,7 +118,7 @@ async function syncCourse(course, dirName, table) {
   table.setStarted(dirName);
 
   const [lessons, lessonIndex] = await Promise.all([
-    fetchLessons(course.id),
+    fetchLessons(client, course.id),
     // Read before lessons-meta.json gets overwritten below, so an id that
     // already has a slug keeps it regardless of what the title says now.
     readLessonDirIndex(exportDir),
@@ -201,7 +130,7 @@ async function syncCourse(course, dirName, table) {
     const lessonFolder = path.join(lessonsDir, lessonSlug);
 
     const [contentItems] = await Promise.all([
-      fetchContentItems(lesson.id),
+      fetchContentItems(client, lesson.id),
       fs.ensureDir(lessonFolder)
     ]);
 
@@ -248,7 +177,7 @@ async function syncCourse(course, dirName, table) {
 
 // MAIN
 (async () => {
-  let courses = await fetchCourses();
+  let courses = await fetchCourses(client);
 
   // Deduplicate by id, in case the API returns a course twice across pages.
   // This used to deduplicate by title slug, to stop two same-titled courses

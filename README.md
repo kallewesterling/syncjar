@@ -259,7 +259,25 @@ npm run push -- --force-titles
 
 # Push without showing diffs
 npm run push -- --no-diff
+
+# Change how many read requests the scan runs at once (default 6)
+npm run push -- --concurrency 3
 ```
+
+#### How a push runs
+
+`push` works in two phases. The **scan** compares every local course against
+Skilljar and builds a list of changes; it writes nothing, so it runs in
+parallel. The **apply** then walks that list, shows each diff and prompts.
+
+So you see the whole change list before the first prompt, rather than having
+prompts surface one at a time over the length of the run. Scanning the full
+catalogue — 66 courses, 649 lessons, 822 content items — takes about 80
+seconds.
+
+If Skilljar starts throttling (the client prints a retry notice and backs
+off), lower `--concurrency`. Narrowing the scan with `--course` or `--lesson`
+is faster still, since `--lesson` cuts the content reads to a single request.
 
 #### Branch guard
 

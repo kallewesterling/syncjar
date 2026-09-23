@@ -16,14 +16,73 @@ and version scheme in `CLAUDE.md`.
 
 ### Changed
 
+- `npm run push` now scans in parallel against Skilljar's list endpoints
+  instead of fetching every object one at a time. It was issuing 1,537
+  sequential requests to check 66 courses, 649 lessons and 822 content items
+  — one `GET` per object, about 380ms each — which is roughly ten minutes of
+  waiting before the first write. It now reads the catalogue in one
+  `GET /courses`, each course's lesson titles in one `GET /lessons?course_id=`,
+  and each lesson's content in one
+  `GET /lessons/{id}/content-items?include_content=true`: 716 requests, run
+  six at a time. Measured against the full tree, 10 minutes becomes **77
+  seconds**, and a single small course 5.8s becomes 2.3s. `--concurrency`
+  tunes the fan-out; lower it if Skilljar starts throttling.
+
+  What gets detected is unchanged, and was checked rather than assumed: run
+  over the whole catalogue, the old and new implementations flag the same two
+  content items and agree on every other course, and the rendered word-diff
+  is byte-identical down to the colour codes.
+
+  Two things that look like further savings are not, and are documented in
+  `skilljar-fetch.mjs` so they don't get re-litigated: `GET /lessons` returns
+  a `content_html` field, but it is empty for `MODULAR` lessons, which is all
+  of them — so one request per lesson is the floor; and neither lessons nor
+  content items carry a timestamp, so only a course has `modified_at` to
+  check freshness against.
+
+- `push` prompts are now preceded by the full change list, because the scan
+  finishes before the first prompt. Previously a prompt surfaced roughly every
+  ninety seconds across a ten-minute run, and you could not see what was still
+  coming. As part of that, the per-object `✅ … is in sync` lines are replaced
+  by one count — 1,535 of them in a full run was not information anyone read.
+
+- Splitting the scan from the apply also means `push` no longer dies on a
+  stray file. A content item the pull could not match upstream is recorded in
+  `lessons-meta.json` with `id: null`; `push` built `/content-items/null` from
+  it, took a 404 and exited, abandoning every other course. Those, along with
+  lessons or content items that have disappeared upstream, are now reported as
+  warnings telling you a pull is due, and the rest of the run continues.
+
+- `--add-last-updated` now rewrites `lessons-meta.json` only for courses whose
+  lessons were actually stamped. It previously rewrote the file for every
+  course it visited, including under `--dry-run`, which is meant not to write.
+
 - The integration branch is now `dev`, renamed from `v2.0`. A permanent branch
   named after a single release collides with the release as soon as the next
   one comes round: everything merged since 1.0.0 was sitting on a branch called
   `v2.0`, unreleased and untagged, so there was no answer to whether new work
   was 2.0 or 2.1 that wasn't also a question about the branch name. `dev` names
   the role, and 2.1 will be a tag rather than a branch.
+
 - `package.json` is named `syncjar` rather than the leftover
   `test-local-skilljar`, and carries the README's one-line description.
+
+### Added
+
+- `scripts/push-plan.mjs` — decides what a push would change, as a pure
+  function over already-fetched data. Separating the decision from the act is
+  what lets the scan be parallel while the prompts stay sequential, and it
+  puts `normalizeHtml()` under test for the first time. That function is
+  load-bearing and was previously only exercised through a live sync: it has
+  to collapse the indentation differences that Skilljar and the local copy
+  produce on their own, while leaving whitespace inside `<pre>` exactly alone,
+  because a YAML block indented with tabs and one indented with spaces are
+  different documents and treating them as equal means the fix can never be
+  pushed.
+- `scripts/skilljar-fetch.mjs` and `scripts/concurrency.mjs` — the list reads
+  and the bounded-parallelism helper, now shared. Pull already had all of
+  them; push needed the same ones, and duplicating them is how the two
+  scripts would have drifted.
 
 ### Security
 
