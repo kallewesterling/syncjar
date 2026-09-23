@@ -268,7 +268,7 @@ npm run push -- --diff-style stacked
 npm run push -- --diff-style side-by-side
 
 # Scan everything, ignoring what was recorded as already in sync
-npm run push -- --no-skip
+npm run push -- --full-scan
 ```
 
 #### Skipping courses that haven't changed
@@ -297,8 +297,20 @@ Scanning 66 course(s)…
 Anything unknown falls through to a full scan: no state file, a changed hash,
 a moved timestamp, a state file from an older version of the tool. Deleting
 `.syncjar-push-state.json` is always safe — the next run just scans
-everything. `--no-skip` does the same without deleting it, and `--lesson`
-disables skipping too, since the hash covers a whole course.
+everything. `--full-scan` does the same without deleting it, and `--lesson`
+disables skipping too, since the hash covers a whole course. (`--no-skip` is
+still accepted as the old name for `--full-scan`.)
+
+A run that skipped everything says so, rather than claiming to have checked:
+
+```
+   66 course(s) unchanged since the last push — skipped without a request
+✓ Nothing to push — 66 course(s) skipped, no content compared.
+```
+
+"Everything is in sync" is reserved for runs that actually compared content
+against Skilljar. After a push, "did that land?" is a fair question to ask,
+and only `--full-scan` answers it honestly.
 
 A course is only recorded once it is *fully* in sync. Decline one prompt and
 it stays unrecorded, so the rest of its changes are still there next run.
