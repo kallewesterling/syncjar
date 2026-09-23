@@ -27,6 +27,14 @@ import { planCourse } from './push-plan.mjs';
 import { renderDiff, renderValueChange } from './render-diff.mjs';
 import { ok, warn, skip, change, muted, heading } from './ui.mjs';
 import {
+  DEFAULT_STATE_FILE,
+  fingerprintCourse,
+  readState,
+  writeState,
+  shouldSkip,
+  recordCourse
+} from './push-state.mjs';
+import {
   DEFAULT_ALLOWED_BRANCHES,
   getCurrentBranch,
   isBranchAllowed
@@ -60,6 +68,16 @@ const argv = yargs(hideBin(process.argv))
     type: 'number',
     default: DEFAULT_CONCURRENCY,
     describe: 'Read requests in flight during the scan phase'
+  })
+  .option('no-skip', {
+    type: 'boolean',
+    default: false,
+    describe: 'Scan every course, even ones recorded as unchanged since the last push'
+  })
+  .option('state-file', {
+    type: 'string',
+    default: DEFAULT_STATE_FILE,
+    describe: 'Where to record which courses were last verified in sync'
   })
   .option('add-last-updated', {
     type: 'boolean',
@@ -155,18 +173,40 @@ async function readLocalCourse(coursesDir, courseFolder) {
  * a large course running alone while the limiter holds back work from other
  * courses that could have started.
  */
-async function scan(locals) {
+async function scan(locals, state) {
   const limit = Math.max(1, argv.concurrency);
 
-  // Stage 0 — one request for the whole catalog. Replaces a GET per course.
+  // Stage 0 — one request for the whole catalog. Replaces a GET per course,
+  // and carries the `modified_at` the skip check below consults.
   const upstreamCourses = await fetchCourses(client);
   const upstreamCourseById = new Map(upstreamCourses.map(c => [c.id, c]));
 
+  // Decide what can be skipped before spending a single request on it. A
+  // course that hashes to what it hashed to at the last push, against an
+  // upstream record that has not moved since, needs no lessons and no content
+  // fetched at all — which is the whole saving. See push-state.mjs for why a
+  // wrong skip cannot overwrite anything.
+  const skipped = [];
+  const scanTargets = [];
+  for (const local of locals) {
+    local.fingerprint = fingerprintCourse(local);
+    local.upstreamModifiedAt = upstreamCourseById.get(local.courseDetails.id)?.modified_at ?? null;
+
+    const canSkip = !argv['no-skip']
+      // --lesson narrows to one lesson, but the fingerprint covers the whole
+      // course, so a skip would answer a question that was not asked.
+      && !argv.lesson
+      && shouldSkip(state.courses[local.courseDetails.id], local);
+
+    if (canSkip) skipped.push(local);
+    else scanTargets.push(local);
+  }
+
   // Stage 1 — lessons, one request per course. Carries every lesson title.
   let done = 0;
-  const lessonsPerCourse = await mapWithConcurrency(locals, limit, async (local) => {
+  const lessonsPerCourse = await mapWithConcurrency(scanTargets, limit, async (local) => {
     const upstream = await fetchLessons(client, local.courseDetails.id);
-    progress(++done, locals.length, `reading lessons — ${local.courseFolder}`);
+    progress(++done, scanTargets.length, `reading lessons — ${local.courseFolder}`);
     return upstream;
   });
   endProgress();
@@ -176,7 +216,7 @@ async function scan(locals) {
   // Only lessons the plan will actually look at: --lesson narrows this from
   // 649 requests to one.
   const lessonTargets = [];
-  locals.forEach((local, i) => {
+  scanTargets.forEach((local, i) => {
     const localIds = new Set(
       local.lessons
         .filter(l => !argv.lesson || l.slug === argv.lesson)
@@ -205,7 +245,7 @@ async function scan(locals) {
   const warnings = [];
   const summaries = [];
 
-  locals.forEach((local, i) => {
+  scanTargets.forEach((local, i) => {
     const upstreamCourse = upstreamCourseById.get(local.courseDetails.id);
     if (!upstreamCourse) {
       warnings.push(
@@ -234,9 +274,42 @@ async function scan(locals) {
       changes: plan.actions.length,
       inSync: plan.inSyncCount
     });
+
+    // Scanned and found clean. Worth recording whichever mode we are in: the
+    // state file caches an observation, not a write, so a --dry-run that
+    // proves a course in sync makes the next run faster without having
+    // touched anything upstream.
+    if (plan.actions.length === 0) local.verifiedInSync = true;
   });
 
-  return { actions, warnings, summaries };
+  return { actions, warnings, summaries, skipped, scanned: scanTargets };
+}
+
+/**
+ * Records every course this run proved to be in sync, leaving entries for
+ * courses it skipped exactly as they were — they are still true, and
+ * rewriting them would only churn the file.
+ */
+async function persistState(stateFile, state, scanned) {
+  let changed = 0;
+  for (const local of scanned) {
+    if (!local.verifiedInSync) {
+      // Out of sync, or not fully accepted. Drop any stale entry so the next
+      // run scans it rather than trusting a record that no longer holds.
+      if (state.courses[local.courseDetails.id]) {
+        delete state.courses[local.courseDetails.id];
+        changed++;
+      }
+      continue;
+    }
+    recordCourse(state, local.courseDetails.id, {
+      dir: local.courseFolder,
+      fingerprint: local.fingerprint,
+      upstreamModifiedAt: local.upstreamModifiedAt
+    });
+    changed++;
+  }
+  if (changed) await writeState(stateFile, state);
 }
 
 // ---------------------------------------------------------------------------
@@ -386,20 +459,32 @@ async function applyContentAction(action) {
     return;
   }
 
+  const stateFile = argv['state-file'];
+  const state = await readState(stateFile);
+  let wrote = false;
+
   console.log(heading(`\nScanning ${locals.length} course(s)…`));
   const started = Date.now();
-  const { actions, warnings, summaries } = await scan(locals);
+  const { actions, warnings, summaries, skipped, scanned } = await scan(locals, state);
   const elapsed = ((Date.now() - started) / 1000).toFixed(1);
 
   const totalInSync = summaries.reduce((n, s) => n + s.inSync, 0);
+  if (skipped.length) {
+    console.log(muted(
+      `   ${skipped.length} course(s) unchanged since the last push — skipped without a request`
+      + ` (--no-skip to scan everything)`
+    ));
+  }
   console.log(chalk.gray(
-    `   ${totalInSync} item(s) already in sync, ${actions.length} change(s) found in ${elapsed}s\n`
+    `   ${scanned.length} course(s) scanned: ${totalInSync} item(s) in sync, `
+    + `${actions.length} change(s) found in ${elapsed}s\n`
   ));
 
   for (const warning of warnings) console.warn(warn(warning));
   if (warnings.length) console.log();
 
   if (actions.length === 0) {
+    await persistState(stateFile, state, scanned);
     console.log(ok(chalk.bold('Everything is in sync.')));
     return;
   }
@@ -430,8 +515,10 @@ async function applyContentAction(action) {
       continue;
     }
 
-    if (action.kind === 'text') await applyTextAction(action);
-    else await applyContentAction(action);
+    action.applied = action.kind === 'text'
+      ? await applyTextAction(action)
+      : await applyContentAction(action);
+    if (action.applied) wrote = true;
   }
 
   // One write per course, after all its stamps have landed upstream.
@@ -443,5 +530,26 @@ async function applyContentAction(action) {
     }
   }
 
+  // A course is in sync now if it started clean, or if every change it had
+  // was accepted. One declined prompt leaves it out of sync, and recording it
+  // would skip the remainder next run — the one way this cache could lose an
+  // edit, so it is checked per course rather than per run.
+  for (const local of new Set(actions.map(a => a.local))) {
+    const mine = actions.filter(a => a.local === local);
+    if (mine.every(a => a.applied)) local.verifiedInSync = true;
+  }
+
+  // Writing to a course bumps its upstream `modified_at`, so the value read
+  // during the scan is now stale and recording it would force a rescan next
+  // run. One request refreshes the whole catalogue.
+  if (wrote) {
+    const fresh = new Map((await fetchCourses(client)).map(c => [c.id, c.modified_at]));
+    for (const local of scanned) {
+      const at = fresh.get(local.courseDetails.id);
+      if (at) local.upstreamModifiedAt = at;
+    }
+  }
+
+  await persistState(stateFile, state, scanned);
   console.log(ok(chalk.bold('Sync complete.')));
 })().catch(err => failCleanly(err, 'Push failed.'));

@@ -161,6 +161,6 @@ test('a long unbreakable token is hard-wrapped inside its column', () => {
   const out = renderDiff(`<p>${long}</p>`, `<p>${long}y</p>`, { style: 'side-by-side', width: 100 });
   for (const line of out.split('\n')) {
     // eslint-disable-next-line no-control-regex
-    assert.ok(line.replace(/\[[0-9;]*m/g, '').length <= 100, 'line overflowed the terminal width');
+    assert.ok(line.replace(/\u001b\[[0-9;]*m/g, '').length <= 100, 'line overflowed the terminal width');
   }
 });

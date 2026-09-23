@@ -2,6 +2,11 @@
 .env
 node_modules
 
+# push's record of which courses were last verified in sync. Local by design:
+# it describes this checkout's content against this Skilljar instance, and a
+# missing file just means the next push scans everything.
+.syncjar-push-state.json
+
 # HTML data
 public/courses
 public/data
