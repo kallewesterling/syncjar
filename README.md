@@ -262,7 +262,38 @@ npm run push -- --no-diff
 
 # Change how many read requests the scan runs at once (default 6)
 npm run push -- --concurrency 3
+
+# Force a diff layout (default: auto)
+npm run push -- --diff-style stacked
+npm run push -- --diff-style side-by-side
 ```
+
+#### Reading a diff
+
+Content diffs are shown in two columns, Skilljar on the left and your local
+copy on the right, with the changed words highlighted in place:
+
+```
+  Skilljar (upstream)                          │   local
+───────────────────────────────────────────────┼───────────────────────────────────────────────
+  ⋯ 6 unchanged line(s) ⋯
+  </li>                                        │   </li>
+- <li>Automate image updates in CI/CD          │ + <li>Automate image updates everywhere CI/CD
+  </li>                                        │   </li>
+  ⋯ 1 unchanged line(s) ⋯
+```
+
+Both sides are reflowed onto matching lines before being compared, using the
+same whitespace rules the sync itself uses — Skilljar and your local copy
+indent and wrap the same markup differently, and without that step nearly
+every line reads as changed. Inside `<pre>`, whitespace is left exactly as it
+is, because there it is content.
+
+Those display lines are produced by the reflow, so they are not file line
+numbers and none are shown.
+
+`--diff-style stacked` gives a one-column `-`/`+` view instead, which is what
+`auto` falls back to on a terminal narrower than 100 columns.
 
 #### How a push runs
 

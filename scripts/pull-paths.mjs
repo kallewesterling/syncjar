@@ -196,7 +196,7 @@ async function main() {
   const index = await readCourseDirIndex(contentPath);
   for (const [id, dirs] of index.duplicates) {
     console.log(chalk.yellow(
-      `⚠️  Path id ${id} is in ${dirs.length} directories: ${dirs.join(', ')}. ` +
+      `! Path id ${id} is in ${dirs.length} directories: ${dirs.join(', ')}. ` +
       `Writing to "${index.byId.get(id)}" only — delete the others.`
     ));
   }
@@ -294,7 +294,7 @@ async function main() {
   }
   if (orphanedPublished.length) {
     console.log(chalk.yellow(
-      `⚠️  Not published on any configured domain, but published.json is still on ` +
+      `! Not published on any configured domain, but published.json is still on ` +
       `disk from an earlier run (${orphanedPublished.length}): ${orphanedPublished.join(', ')}`
     ));
   }

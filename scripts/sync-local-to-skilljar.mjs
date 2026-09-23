@@ -16,7 +16,6 @@
 import fs from 'fs-extra';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { diffWordsWithSpace } from 'diff';
 import chalk from 'chalk';
 import inquirer from 'inquirer';
 import yargs from 'yargs';
@@ -25,6 +24,8 @@ import { listCourseDirs } from './course-dirs.mjs';
 import { mapWithConcurrency } from './concurrency.mjs';
 import { fetchCourses, fetchLessons, fetchContentItems } from './skilljar-fetch.mjs';
 import { planCourse } from './push-plan.mjs';
+import { renderDiff, renderValueChange } from './render-diff.mjs';
+import { ok, warn, skip, change, muted, heading } from './ui.mjs';
 import {
   DEFAULT_ALLOWED_BRANCHES,
   getCurrentBranch,
@@ -49,6 +50,12 @@ const argv = yargs(hideBin(process.argv))
   .option('force-titles', { type: 'boolean', describe: 'Sync course/lesson title changes without prompting (separate from --force)' })
   .option('diff-only', { type: 'boolean', describe: 'Only show diffs, do not sync' })
   .option('diff', { type: 'boolean', default: true, describe: 'Show diffs before syncing' })
+  .option('diff-style', {
+    type: 'string',
+    choices: ['auto', 'side-by-side', 'stacked'],
+    default: 'auto',
+    describe: 'Diff layout. auto uses two columns when the terminal is wide enough'
+  })
   .option('concurrency', {
     type: 'number',
     default: DEFAULT_CONCURRENCY,
@@ -75,34 +82,15 @@ dotenv.config();
 // Auto-retries on 429/5xx, honouring the server's Retry-After header.
 const client = createSkilljarClient();
 
-// normalizeHtml collapses each block of markup onto one long line, so a
-// line-level diff flags any real edit as "whole line removed, whole line
-// added" — the reader can't tell what actually changed without eyeballing
-// two giant strings. Word-level diffing highlights just the words that
-// changed, wherever they fall in the line.
-const CONTEXT_CHARS = 60;
-
-// Unchanged spans between edits can still be huge (a full paragraph either
-// side of a one-word fix), so trim anything past a small window around each
-// change rather than flooding the terminal with text nobody needs to review.
-function elideContext(text) {
-  if (text.length <= CONTEXT_CHARS * 2 + 20) return text;
-  const skipped = text.length - CONTEXT_CHARS * 2;
-  return `${text.slice(0, CONTEXT_CHARS)}…[${skipped} unchanged chars]…${text.slice(-CONTEXT_CHARS)}`;
-}
-
-function printDiff(oldValue, newValue) {
-  const parts = diffWordsWithSpace(oldValue || '', newValue || '');
-  for (const part of parts) {
-    if (part.removed) {
-      process.stdout.write(chalk.bgRed.white(part.value));
-    } else if (part.added) {
-      process.stdout.write(chalk.bgGreen.black(part.value));
-    } else {
-      process.stdout.write(chalk.gray(elideContext(part.value)));
-    }
+// A title is one short string, so a two-column layout would be more structure
+// than it deserves; content bodies get the full side-by-side treatment from
+// render-diff.mjs.
+function printDiff(action) {
+  if (action.kind === 'text') {
+    console.log(renderValueChange(action.upstreamValue, action.localValue));
+    return;
   }
-  process.stdout.write('\n');
+  console.log(renderDiff(action.upstreamValue, action.localValue, { style: argv['diff-style'] }));
 }
 
 // Progress goes to stderr so that piping the diff output somewhere doesn't
@@ -131,7 +119,7 @@ async function readLocalCourse(coursesDir, courseFolder) {
   const lessonsMetaPath = path.join(courseDir, 'lessons-meta.json');
 
   if (!(await fs.pathExists(detailsPath)) || !(await fs.pathExists(lessonsMetaPath))) {
-    console.warn(`⚠️ Skipping course "${courseFolder}" — missing details or metadata`);
+    console.warn(warn(`Skipping course "${courseFolder}" — missing details or metadata`));
     return null;
   }
 
@@ -271,7 +259,7 @@ async function applyTextAction(action) {
   }
 
   if (!shouldUpdate) {
-    console.log(chalk.gray(`⏭️ Skipped ${action.label}`));
+    console.log(skip(`Skipped ${action.label}`));
     return false;
   }
 
@@ -283,7 +271,7 @@ async function applyTextAction(action) {
   } catch (err) {
     failCleanly(err, `Could not update ${action.label}.`);
   }
-  console.log(chalk.green(`✅ Updated ${action.label}`));
+  console.log(ok(`Updated ${action.label}`));
   return true;
 }
 
@@ -300,7 +288,7 @@ async function applyContentAction(action) {
   }
 
   if (!shouldUpdate) {
-    console.log(chalk.gray(`⏭️ Skipped ${action.label}`));
+    console.log(skip(`Skipped ${action.label}`));
     return false;
   }
 
@@ -313,7 +301,7 @@ async function applyContentAction(action) {
   } catch (err) {
     failCleanly(err, `Could not update ${action.label}.`);
   }
-  console.log(chalk.green(`✅ Updated ${action.label}`));
+  console.log(ok(`Updated ${action.label}`));
 
   if (argv['add-last-updated']) {
     const today = new Date().toLocaleDateString('en-US', {
@@ -335,9 +323,9 @@ async function applyContentAction(action) {
       failCleanly(err, `Updated ${action.label}, but could not stamp lesson ${action.lessonId} as updated.`);
     }
 
-    action.lesson.description_html = newDescription; // 🔥 update in-memory object
+    action.lesson.description_html = newDescription; // update in-memory object
     action.local.stampedLessons = true;
-    console.log(chalk.cyan(`📝 Updated lesson metadata with 'Last updated: ${today}'`));
+    console.log(muted(`  stamped lesson ${action.lessonId} with 'Last updated: ${today}'`));
   }
 
   return true;
@@ -362,7 +350,7 @@ async function applyContentAction(action) {
         ? `is on branch ${chalk.yellow(branch)}`
         : 'has no branch checked out (detached HEAD, or not a git repo)';
 
-      console.error(chalk.bold.red(`\n⛔ Refusing to push: the course content at ${coursesDir} ${where}.`));
+      console.error(chalk.bold.red(`\nRefusing to push: the course content at ${coursesDir} ${where}.`));
       console.error(chalk.gray(
         `\nSkilljar holds one live state and knows nothing about branches, so pushing from a\n` +
         `branch whose content is behind ${DEFAULT_ALLOWED_BRANCHES.join('/')} would silently overwrite live fixes.\n`
@@ -398,7 +386,7 @@ async function applyContentAction(action) {
     return;
   }
 
-  console.log(chalk.bold(`\n🔍 Scanning ${locals.length} course(s)…`));
+  console.log(heading(`\nScanning ${locals.length} course(s)…`));
   const started = Date.now();
   const { actions, warnings, summaries } = await scan(locals);
   const elapsed = ((Date.now() - started) / 1000).toFixed(1);
@@ -408,11 +396,11 @@ async function applyContentAction(action) {
     `   ${totalInSync} item(s) already in sync, ${actions.length} change(s) found in ${elapsed}s\n`
   ));
 
-  for (const warning of warnings) console.warn(chalk.yellow(`⚠️  ${warning}`));
+  for (const warning of warnings) console.warn(warn(warning));
   if (warnings.length) console.log();
 
   if (actions.length === 0) {
-    console.log(chalk.bold.green('✨ Everything is in sync.'));
+    console.log(ok(chalk.bold('Everything is in sync.')));
     return;
   }
 
@@ -420,25 +408,25 @@ async function applyContentAction(action) {
   // to be asked about before the first prompt rather than after the last.
   console.log(chalk.bold('Changes to review:'));
   for (const summary of summaries.filter(s => s.changes > 0)) {
-    console.log(`  ${chalk.yellow('❗')} ${summary.title} — ${summary.changes} change(s)`);
+    console.log(`  ${change(summary.title)} ${muted(`— ${summary.changes} change(s)`)}`);
   }
 
   for (const action of actions) {
-    console.log(`\n📘 ${chalk.bold(action.local.courseDetails.title)} — ${chalk.yellow(action.label)}`);
+    console.log(`\n${heading(action.local.courseDetails.title)} ${muted('—')} ${chalk.yellow(action.label)}`);
 
     if (argv.diff) {
-      console.log(chalk.gray('📄 Showing unified diff:\n'));
-      printDiff(action.upstreamValue, action.localValue);
+      console.log();
+      printDiff(action);
       console.log(); // newline
     }
 
     if (argv['diff-only']) {
-      console.log(chalk.gray(`🔍 DIFF ONLY: Skipping ${action.label}`));
+      console.log(skip(`diff only — not writing ${action.label}`));
       continue;
     }
 
     if (argv['dry-run']) {
-      console.log(chalk.gray(`🔍 DRY RUN: Would update ${action.label}`));
+      console.log(skip(`dry run — would update ${action.label}`));
       continue;
     }
 
@@ -451,9 +439,9 @@ async function applyContentAction(action) {
     for (const local of new Set(actions.map(a => a.local))) {
       if (!local.stampedLessons) continue;
       await fs.outputJson(local.lessonsMetaPath, local.lessons, { spaces: 2 });
-      console.log(chalk.gray(`📁 Updated ${local.courseFolder}/lessons-meta.json to reflect updated metadata.`));
+      console.log(muted(`  wrote ${local.courseFolder}/lessons-meta.json`));
     }
   }
 
-  console.log(chalk.bold.green('\n✨ Sync complete.'));
+  console.log(ok(chalk.bold('Sync complete.')));
 })().catch(err => failCleanly(err, 'Push failed.'));

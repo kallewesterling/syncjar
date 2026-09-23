@@ -87,7 +87,7 @@ async function fetchPublished(domain) {
   const { byId, duplicates } = await readCourseDirIndex(contentPath);
   console.log(chalk.gray(`Local courses: ${byId.size}. Domains: ${domains.join(', ')}`));
   for (const [cid, dirs] of duplicates) {
-    console.log(chalk.yellow(`⚠️  Course id ${cid} is in ${dirs.length} directories: ${dirs.join(', ')}`));
+    console.log(chalk.yellow(`! Course id ${cid} is in ${dirs.length} directories: ${dirs.join(', ')}`));
   }
 
   // Collect: courseId -> { domain -> { slug, published_course_id, live, hidden } }

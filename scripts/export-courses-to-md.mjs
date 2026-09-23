@@ -24,7 +24,7 @@ async function processCourse(courseFolder) {
     const lessonsMetaPath = path.join(coursePath, 'lessons-meta.json');
 
     if (!(await fs.pathExists(detailsPath)) || !(await fs.pathExists(lessonsMetaPath))) {
-        console.warn(`⚠️ Skipping ${courseFolder}, missing metadata`);
+        console.warn(`! Skipping ${courseFolder}, missing metadata`);
         return;
     }
 
@@ -71,7 +71,7 @@ async function processCourse(courseFolder) {
 
     const outputPath = path.join(outputDir, `${courseFolder}.md`);
     await fs.writeFile(outputPath, output, 'utf8');
-    console.log(`✅ Wrote: ${outputPath}`);
+    console.log(`✓ Wrote: ${outputPath}`);
 }
 
 // MAIN
@@ -83,4 +83,4 @@ for (const folder of courseFolders) {
     }
 }
 
-console.log('📚 All courses exported to Markdown.');
+console.log('All courses exported to Markdown.');

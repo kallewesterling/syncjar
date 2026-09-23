@@ -16,6 +16,35 @@ and version scheme in `CLAUDE.md`.
 
 ### Changed
 
+- Content diffs are now shown in two columns, upstream on the left and local
+  on the right, with changed words highlighted in place. They were a
+  word-level diff over one long unbroken string, which had nowhere to put the
+  two versions: a one-word edit came out as adjacent red and green fragments
+  spliced into a single run of text — `updates ▸in◂▸isdffsdn◂ CI/CD` — which
+  reads as neither the old sentence nor the new one.
+
+  The reason it was a word diff is real, and is what the new renderer had to
+  solve rather than ignore: Skilljar and the local copy wrap and indent the
+  same markup differently without anyone editing anything, so a line diff over
+  raw HTML reports nearly every line as changed. `render-diff.mjs` therefore
+  reflows both sides onto matching lines first — using the same whitespace
+  rules the comparison uses, `<pre>` included — and diffs those. Long runs of
+  unchanged content are elided to a few lines of context either side.
+
+  `--diff-style` selects `side-by-side`, `stacked`, or `auto`, which falls
+  back to stacked below 100 columns. Display lines come from the reflow rather
+  than the file, so none are numbered: a line number here would point at a
+  line the file does not have.
+
+- The CLI no longer uses decorative emoji. There were 23 different ones across
+  15 scripts, and they were inconsistent about meaning as well as noisy — `✅`
+  marked both "already in sync" and "written upstream", which are opposite
+  outcomes for whoever is reading. `scripts/ui.mjs` now defines one small
+  vocabulary that carries meaning: `✓` written or verified, `!` needs a human
+  but the run continues, `✗` the run is stopping, `·` deliberately not done,
+  `~` a difference about to be reviewed. Colour is the emphasis; the glyph is
+  there so the meaning survives a log file or a colour-blind reader.
+
 - `npm run push` now scans in parallel against Skilljar's list endpoints
   instead of fetching every object one at a time. It was issuing 1,537
   sequential requests to check 66 courses, 649 lessons and 822 content items
@@ -79,6 +108,9 @@ and version scheme in `CLAUDE.md`.
   because a YAML block indented with tabs and one indented with spaces are
   different documents and treating them as equal means the fix can never be
   pushed.
+- `scripts/render-diff.mjs` — reflows two copies of a content item onto
+  comparable lines and lays the difference out in two columns or stacked.
+- `scripts/ui.mjs` — the status vocabulary every script reports with.
 - `scripts/skilljar-fetch.mjs` and `scripts/concurrency.mjs` — the list reads
   and the bounded-parallelism helper, now shared. Pull already had all of
   them; push needed the same ones, and duplicating them is how the two

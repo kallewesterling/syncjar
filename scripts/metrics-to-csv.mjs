@@ -79,4 +79,4 @@ for (const course of allCourses) {
 const csv = parse(rows, { fields });
 await fs.writeFile(outputPath, csv);
 
-console.log(`✅ Metrics CSV exported to ${outputPath}`);
+console.log(`✓ Metrics CSV exported to ${outputPath}`);

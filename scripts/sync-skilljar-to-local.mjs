@@ -207,7 +207,7 @@ async function syncCourse(course, dirName, table) {
 
   for (const [id, dirs] of index.duplicates) {
     console.warn(chalk.yellow(
-      `⚠️  Course id ${id} is in ${dirs.length} directories: ${dirs.join(', ')}. ` +
+      `! Course id ${id} is in ${dirs.length} directories: ${dirs.join(', ')}. ` +
       `Writing to "${index.byId.get(id)}" only — delete the others.`
     ));
   }
@@ -237,5 +237,5 @@ async function syncCourse(course, dirName, table) {
 
   await withConcurrency(targets, 3, ({ course, dirName }) => syncCourse(course, dirName, table));
 
-  process.stdout.write('\n🎉 All courses synced.\n');
+  process.stdout.write('\n✓ All courses synced.\n');
 })().catch(err => failCleanly(err, 'Pull failed.'));
