@@ -33,7 +33,7 @@ async function generateCoursesJson() {
     const metaPath = path.join(coursePath, 'lessons-meta.json');
 
     if (!(await fs.pathExists(detailsPath)) || !(await fs.pathExists(metaPath))) {
-      console.warn(`⚠️ Skipping ${courseSlug}: missing details or lesson metadata`);
+      console.warn(`! Skipping ${courseSlug}: missing details or lesson metadata`);
       continue;
     }
 
@@ -68,9 +68,9 @@ async function generateCoursesJson() {
   await fs.ensureDir(path.dirname(outputPath));
   await fs.writeJson(outputPath, courseIndex, { spaces: 2 });
 
-  console.log('✅ Generated courses.json');
+  console.log('✓ Generated courses.json');
 }
 
 generateCoursesJson().catch(err => {
-  console.error('❌ Error generating course index:', err);
+  console.error('✗ Error generating course index:', err);
 });

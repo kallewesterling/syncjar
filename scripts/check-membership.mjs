@@ -61,7 +61,7 @@ for (const email of argv.email) {
     const hit = (res.data?.results || []).map((r) => r.user ?? r)
       .find((u) => (u?.email || '').toLowerCase() === email.toLowerCase());
     if (hit) targets.push({ id: hit.id, email: hit.email });
-    else console.log(chalk.yellow(`⚠️  no user found for ${email}`));
+    else console.log(chalk.yellow(`! no user found for ${email}`));
   } catch (e) {
     console.log(chalk.red(`✗ lookup failed for ${email}: ${err(e)}`));
   }

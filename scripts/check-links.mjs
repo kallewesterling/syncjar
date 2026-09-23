@@ -22,7 +22,7 @@ const allLinks = new Map();
 
 const files = glob.sync(`${coursesPath}/**/*.html`);
 
-console.log(`🔍 Scanning ${files.length} HTML files...`);
+console.log(`Scanning ${files.length} HTML files...`);
 
 for (const file of files) {
   const html = await fs.readFile(file, 'utf8');
@@ -42,7 +42,7 @@ for (const file of files) {
   }
 }
 
-console.log(`🔗 Found ${allLinks.size} unique links. Checking...`);
+console.log(`Found ${allLinks.size} unique links. Checking...`);
 
 const result = {};
 
@@ -68,4 +68,4 @@ for (const [link, sources] of allLinks.entries()) {
 await fs.ensureDir(path.dirname(outputReport));
 await fs.writeJson(outputReport, result, { spaces: 2 });
 
-console.log(`✅ Finished. Report saved to ${outputReport}`);
+console.log(`✓ Finished. Report saved to ${outputReport}`);

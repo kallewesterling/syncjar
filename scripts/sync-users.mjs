@@ -44,14 +44,14 @@ async function fetchPaginated(endpoint, params = {}, pageSize = 100) {
         allResults.push(...data);
         break;
       } else if (Object.keys(data).length === 0) {
-        console.warn(`⚠️ Empty response from ${endpoint}. Skipping.`);
+        console.warn(`! Empty response from ${endpoint}. Skipping.`);
         break;
       } else {
-        console.warn(`⚠️ Unexpected response from ${endpoint}:\n`, data);
+        console.warn(`! Unexpected response from ${endpoint}:\n`, data);
         break;
       }
   
-      console.log(`📦 Fetched ${allResults.length} items from ${endpoint}`);
+      console.log(`Fetched ${allResults.length} items from ${endpoint}`);
 
       if (!data.next) break;
       page += 1;
@@ -77,7 +77,7 @@ async function fetchCourseProgress(userId) {
 }
 
 async function syncUsers() {
-  console.log('🔄 Syncing users and course progress...');
+  console.log('Syncing users and course progress...');
   await fs.ensureDir(perUserDir);
 
   const users = await fetchPaginated('/users', {}, 100);
@@ -91,7 +91,7 @@ async function syncUsers() {
     const userEmail = userData?.email || 'unknown';
 
     if (!userId) {
-      console.warn(`⚠️ Skipping entry with missing user ID:`, entry);
+      console.warn(`! Skipping entry with missing user ID:`, entry);
       continue;
     }
 
@@ -104,11 +104,11 @@ async function syncUsers() {
 
     if (argv.limit && count >= argv.limit) break;
 
-    console.log(`👤 Processing ${userEmail} (${userId})...`);
+    console.log(`Processing ${userEmail} (${userId})...`);
 
     const userFile = path.join(perUserDir, `${userId}.json`);
     if (!argv.dryRun && await fs.pathExists(userFile)) {
-      console.log(`↪️ Already cached. Skipping fetch for ${userId}.`);
+      console.log(`· Already cached. Skipping fetch for ${userId}.`);
       continue;
     }
 
@@ -131,7 +131,7 @@ async function syncUsers() {
       processed.push(fullUserRecord);
       count += 1;
     } catch (err) {
-      console.error(`❌ Failed to process ${userEmail} (${userId}):`, err.message);
+      console.error(`✗ Failed to process ${userEmail} (${userId}):`, err.message);
     }
   }
 
@@ -147,22 +147,22 @@ async function syncUsers() {
     const merged = await readAllCachedUsers();
     await fs.writeJson(mergedPath, merged, { spaces: 2 });
 
-    console.log(`✅ Saved flat user list: ${userListPath}`);
-    console.log(`✅ Saved merged progress: ${mergedPath} (${merged.length} user(s))`);
+    console.log(`✓ Saved flat user list: ${userListPath}`);
+    console.log(`✓ Saved merged progress: ${mergedPath} (${merged.length} user(s))`);
 
     // --limit and --start-after deliberately cut the run short, and a user who
     // has never been fetched has no cache file to merge, so say plainly that
     // the merged file is not the whole population.
     const expected = users.filter((e) => e.user?.id).length;
     if (merged.length < expected) {
-      console.warn(`⚠️ ${mergedPath} covers ${merged.length} of ${expected} users.`);
+      console.warn(`! ${mergedPath} covers ${merged.length} of ${expected} users.`);
       console.warn('   Re-run without --limit/--start-after for a complete file.');
     }
   } else {
-    console.log('💡 Dry run mode: no files written.');
+    console.log('Dry run mode: no files written.');
   }
 
-  console.log(`🎉 Sync complete. Fetched ${processed.length} user(s) this run.`);
+  console.log(`✓ Sync complete. Fetched ${processed.length} user(s) this run.`);
 }
 
 // The per-user files are the durable record; the merged file is a view over
@@ -180,7 +180,7 @@ export async function readAllCachedUsers(dir = perUserDir) {
     } catch (err) {
       // A truncated file from an interrupted write would otherwise take the
       // whole export down with it. Name it and move on.
-      console.warn(`⚠️ Skipping unreadable cache file ${file}: ${err.message}`);
+      console.warn(`! Skipping unreadable cache file ${file}: ${err.message}`);
     }
   }
 
@@ -191,6 +191,6 @@ export async function readAllCachedUsers(dir = perUserDir) {
 // tests without kicking off thousands of API calls.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   syncUsers().catch(err => {
-    console.error('❌ Sync failed:', err.message);
+    console.error('✗ Sync failed:', err.message);
   });
 }

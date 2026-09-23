@@ -40,4 +40,4 @@ const rows = users.map((user, i) => {
 const csv = parse(rows);
 await fs.writeFile(outputPath, csv);
 
-console.log(`✅ CSV exported to ${outputPath}`);
+console.log(`✓ CSV exported to ${outputPath}`);

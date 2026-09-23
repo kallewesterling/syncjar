@@ -84,7 +84,7 @@ const header = rows.shift().split(',').map((h) => h.trim().replace(/^"|"$/g, '')
 const idIdx = header.indexOf('skilljar_id');
 const emailIdx = header.indexOf('email');
 if (idIdx === -1 || emailIdx === -1) {
-  console.error(chalk.red('❌ Input CSV must have skilljar_id and email columns.'));
+  console.error(chalk.red('✗ Input CSV must have skilljar_id and email columns.'));
   process.exit(1);
 }
 
@@ -98,7 +98,7 @@ if (argv.onlyEmail) {
   const wanted = argv.onlyEmail.trim().toLowerCase();
   targets = targets.filter((t) => t.email.toLowerCase() === wanted);
   if (!targets.length) {
-    console.error(chalk.red(`❌ ${argv.onlyEmail} is not in ${argv.in}. Refusing to act on someone not on the reviewed list.`));
+    console.error(chalk.red(`✗ ${argv.onlyEmail} is not in ${argv.in}. Refusing to act on someone not on the reviewed list.`));
     process.exit(1);
   }
 }
@@ -263,7 +263,7 @@ await fs.writeFile(auditPath, parse(audit, {
   fields: ['email', 'skilljar_id', 'action', 'target', 'before', 'after', 'result', 'error']
 }));
 
-console.log(chalk.green(`\n✅ ${ok} applied`) + `, ${skipped} skipped, ` +
+console.log(chalk.green(`\n✓ ${ok} applied`) + `, ${skipped} skipped, ` +
             (failed ? chalk.red(`${failed} failed`) : '0 failed'));
 console.log(`   Audit trail: ${auditPath}`);
 if (failed) console.log(chalk.yellow('   Check the audit CSV — the error column has the reason for each failure.'));

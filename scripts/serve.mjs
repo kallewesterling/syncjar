@@ -80,7 +80,7 @@ async function buildCourseIndex() {
 
       index[details.title] = { Lessons: lessonEntries };
     } catch (err) {
-      console.warn(`⚠️  Skipping ${slug}: ${err.message}`);
+      console.warn(`! Skipping ${slug}: ${err.message}`);
     }
   }));
 
@@ -142,7 +142,7 @@ const server = http.createServer(async (req, res) => {
     await serveFile(filePath, res);
 
   } catch (err) {
-    console.error(`❌ ${req.method} ${req.url} — ${err.message}`);
+    console.error(`✗ ${req.method} ${req.url} — ${err.message}`);
     if (!res.headersSent) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: err.message }));
@@ -151,7 +151,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`\n🔍 Preview server running at http://localhost:${PORT}`);
+  console.log(`\nPreview server running at http://localhost:${PORT}`);
   console.log(`   Courses: ${courseContentPath}`);
   console.log(`   Config:  ${configPath}\n`);
 });

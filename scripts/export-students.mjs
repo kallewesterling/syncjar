@@ -71,11 +71,11 @@ async function fetchAllUsers(pageSize) {
       all.push(...data);
       break;
     } else {
-      console.warn(chalk.yellow(`⚠️  Unexpected response on page ${page}`));
+      console.warn(chalk.yellow(`! Unexpected response on page ${page}`));
       break;
     }
 
-    process.stdout.write(`\r📦 Fetched ${all.length} students...`);
+    process.stdout.write(`\rFetched ${all.length} students...`);
 
     if (!data.next) break;
     page += 1;
@@ -135,7 +135,7 @@ rows.sort((a, b) => a.email.localeCompare(b.email));
 await fs.ensureDir(path.dirname(argv.out));
 await fs.writeFile(argv.out, parse(rows));
 
-console.log(chalk.green(`✅ ${rows.length} students written to ${argv.out}`));
+console.log(chalk.green(`✓ ${rows.length} students written to ${argv.out}`));
 console.log(`   ${entries.length} total records from the API`);
 if (skippedDomain) console.log(`   ${skippedDomain} skipped (other domains)`);
 if (skippedNoEmail) console.log(`   ${skippedNoEmail} skipped (no usable email)`);

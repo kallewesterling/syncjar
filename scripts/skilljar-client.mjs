@@ -86,7 +86,7 @@ export function redactError(error) {
 export function failCleanly(err, context) {
   const status = err?.response?.status;
   const body = err?.response?.data;
-  console.error(chalk.red(`\n❌ ${context}`));
+  console.error(chalk.red(`\n✗ ${context}`));
   if (status) console.error(chalk.red(`   HTTP ${status}`));
   if (typeof body === 'string' && body.length < 300) {
     console.error(chalk.red(`   ${body}`));
@@ -139,7 +139,7 @@ export function createSkilljarClient() {
 
       process.stderr.write(
         chalk.yellow(
-          `\n⏳ Skilljar ${reason} on ${config.method?.toUpperCase()} ${config.url} — ` +
+          `\nSkilljar ${reason} on ${config.method?.toUpperCase()} ${config.url} — ` +
             `retrying in ${Math.round(delay / 1000)}s ` +
             `(attempt ${config._retryCount}/${MAX_RETRIES})\n`
         )
