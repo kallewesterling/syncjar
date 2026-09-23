@@ -1,26 +1,62 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
 body {
-    font-family: sans-serif;
-    margin: 2rem;
-    max-width: 900px;
-  }
-  
-  header {
-    margin-bottom: 2rem;
-  }
-  
-  select {
-    margin: 0 1rem 1rem 0;
-    padding: 0.4rem;
-  }
-  
-  .lesson-top {
-    border-bottom: 1px solid #ddd;
-    margin-bottom: 1rem;
-  }
-  
-  .lesson-body {
-    padding: 1rem;
-    border: 1px solid #ddd;
-    background: #fefefe;
-  }
-  
+  font-family: sans-serif;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+header {
+  flex-shrink: 0;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid #ddd;
+  background: #f9f9f9;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+header h1 {
+  margin: 0;
+  font-size: 1.1rem;
+  margin-right: 0.5rem;
+}
+
+select {
+  padding: 0.35rem 0.5rem;
+  font-size: 0.9rem;
+}
+
+main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+}
+
+.lesson-top {
+  flex-shrink: 0;
+  padding: 0.75rem 1.5rem;
+  border-bottom: 1px solid #ddd;
+  background: #fff;
+}
+
+.lesson-top h2 {
+  margin: 0;
+  font-size: 1rem;
+  color: #444;
+}
+
+.lesson-frame {
+  flex: 1;
+  width: 100%;
+  border: none;
+}
