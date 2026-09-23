@@ -1,6 +1,6 @@
 {
   "name": "syncjar",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "main": "index.js",
   "scripts": {
     "test": "node --test \"test/**/*.test.mjs\"",
@@ -16,7 +16,7 @@
     "export:metrics": "node scripts/metrics-to-csv.mjs",
     "check:links": "node scripts/check-links.mjs",
     "sync:users": "node scripts/sync-users.mjs"
-},
+  },
   "author": "",
   "license": "MIT",
   "description": "Edit, preview, and sync Skilljar course content locally.",

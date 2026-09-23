@@ -4,9 +4,27 @@ Local-first tooling for Chainguard's Skilljar instance (Chainguard Courses).
 
 ## Branches and versions
 
-`main` is the release branch and the repo default. `dev` is the integration
-branch. Work flows feature → `dev` → `main`, and PRs base on `dev` unless the
-change is a hotfix.
+`main` is the release branch. `dev` is the integration branch **and the repo
+default**. Work flows feature → `dev` → `main`, and PRs base on `dev` unless
+the change is a hotfix.
+
+`dev` is the default on purpose. A new PR — and any bot that opens one —
+targets the default branch, so making it `dev` means nothing arrives on
+`main` un-integrated. `chainguard-dev/courses` has the opposite arrangement
+and documents the cost: `main` is default there, so Dependabot, the weekly
+link check and the nightly Skilljar sync all open against `main`, those are
+the merges that go un-back-merged, and `dev` silently falls behind while git
+reports nothing wrong.
+
+Both branches are protected: pull requests required, no force-pushes, no
+deletions, and admins are not exempt. Approvals are not required, since a
+single maintainer cannot approve their own PR. CI (`.github/workflows/test.yaml`)
+runs the test suite on every PR to either branch.
+
+**A back-merge of `main` into `dev` must be merged with a merge commit, not
+squashed.** Squashing it produces a new commit with no link to `main`'s
+history, so `main` stops being an ancestor of `dev` and the next release
+cannot fast-forward — which is how the divergence starts over.
 
 **A branch names a role, never a version.** The integration branch was called
 `v2.0` until 2026-09-23, which collided with the release it was named after:

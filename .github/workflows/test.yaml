@@ -1,0 +1,49 @@
+# Runs the unit tests on every pull request and on both long-lived branches.
+#
+# The repo had 133 tests and nothing running them, which is how #18 reached
+# `dev`: a flag that silently did nothing, in the one part of `push` a live
+# run could not honestly exercise. A test existed for it within minutes of
+# the bug being reported — what was missing was anything to run it.
+#
+# Deliberately small. Every test here is offline: no Skilljar credentials, no
+# network, no build step. Nothing in this workflow should ever need a secret,
+# and if it starts to, that is a sign a test has grown a live dependency it
+# should not have.
+name: test
+
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev, main]
+
+permissions:
+  contents: read
+
+concurrency:
+  # A new push to the same branch or PR makes the in-flight run irrelevant.
+  group: test-${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 20 is the oldest release these scripts are expected to run on; 22 is
+        # what most people will actually have. Both, because the code uses
+        # reasonably current syntax and a silent drop of 20 support is the
+        # kind of thing nobody notices until someone's machine is older.
+        node-version: ['20', '22']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm test

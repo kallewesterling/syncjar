@@ -14,6 +14,8 @@ and version scheme in `CLAUDE.md`.
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-09-23
+
 ### Fixed
 
 - `push`'s force-a-full-scan flag works. It was declared as `no-skip`, and
