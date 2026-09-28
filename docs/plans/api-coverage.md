@@ -11,12 +11,12 @@ content-relevant gaps are below.
 
 The machine-readable spec is at `https://api.skilljar.com/docs/schema.yml`
 (OpenAPI 3, ~23k lines). `CLAUDE.md` says the docs can only be read in a
-browser, which is true of the Redoc page and not of the spec it loads. Fix that
-note as part of this work.
+browser, which is true of the Redoc page and not of the spec it loads. Phase 0
+corrects that note.
 
 ### We already fetch more than we keep
 
-`sync-skilljar-to-local.mjs:138` keeps only content items with `content_html`:
+Before Phase 0, the pull kept only content items with `content_html`:
 
 ```js
 contentItems.filter(i => i.content_html)
@@ -70,17 +70,23 @@ Quizzes are usually few next to lessons, so the added cost is small. `GET
 - Write `type`, `content_quiz_id`, `content_asset_id`, `optional`,
   `time_seconds`, `search_keywords` and `tooltip_html` into each lesson's
   `lessons-meta.json` entry.
-- Record non-HTML content items as metadata entries (`id`, `type`, `order`,
-  `header`, `content_quiz_id` / `content_asset_id`) instead of dropping them.
-  They have no file, so `push` must skip them. It currently treats a
-  `content_items` entry as an HTML file to send, and `id: null` entries as
-  disk-only files, so both code paths need a type check.
-- Pin both behaviours with fixtures in `test/fixtures`. Syncjar is public, so
-  fixtures use invented quizzes, never real course content.
+- Record non-HTML content items (`id`, `type`, `order`, `header`, and the
+  `content_*_id` reference) under a separate `non_html_items` key. They don't
+  go into `content_items`, because push, preview, the Markdown export and
+  content repos' tooling all read `item.file` from every entry there.
+- Push refuses to PUT a file over an item that isn't `HTML` upstream.
+- Tests use invented data only. Syncjar is public.
 
-This is the smallest useful PR, and it tells us whether an instance's quizzes are legacy
-`QUIZ`-type lessons (quiz id on the lesson), `QUIZ` content items inside
-`MODULAR` lessons, or both. Phase 1 has to handle whatever it finds.
+**Done** in the first PR on this branch. What it showed against a real instance:
+
+- Quizzes are `QUIZ` content items inside `MODULAR` lessons, with the quiz id on
+  the content item. The lesson-level `content_quiz_id` was null throughout, so
+  legacy `QUIZ`-type lessons may not occur in practice. 1a should still warn
+  when it meets one.
+- **One quiz can be linked from more than one lesson.** Two lessons in one
+  course pointed at the same quiz id. This rules out keeping a quiz file next
+  to its lesson (see 1a).
+- `SECTION` lessons exist and have no content items.
 
 ## Phase 1 — quizzes (the delivery)
 
@@ -106,14 +112,20 @@ section. They are exactly the kind of trap that section exists for.
 - For each quiz referenced by a lesson, `GET /quizzes/{id}/questions` returns
   questions with their answers. Unreferenced quizzes are listed in a report and
   not written, so that orphans and drafts don't flood the content repo.
-- On-disk format: `lessons/<lesson-slug>/quiz-<quiz_id>.json`, next to that
-  lesson's `content-<id>.html` files. It holds the quiz settings plus an ordered
-  `questions` array (`id`, `type`, `html`, feedback fields, and `answers` with
-  `answer_text` and `correct`).
-  - The file goes inside the course folder rather than in a new top-level
-    directory because Syncjar only knows `COURSE_CONTENT_PATH` and
-    `PATH_CONTENT_PATH`, so a new location would need a new variable in every
-    content repo that wraps it.
+- On-disk format: `<course>/quizzes/quiz-<quiz_id>.json`, written once per
+  course however many lessons link to it. Lessons point at it through the
+  `content_quiz_id` in `non_html_items`, which Phase 0 already writes. The
+  file holds the quiz settings plus an ordered `questions` array (`id`, `type`,
+  `html`, feedback fields, and `answers` with `answer_text` and `correct`).
+  - Not `lessons/<slug>/quiz-<id>.json`: a quiz linked from two lessons would
+    then exist as two files, and push would have two sources of truth for one
+    upstream object.
+  - Inside the course folder rather than in a new top-level directory, because
+    Syncjar only knows `COURSE_CONTENT_PATH` and `PATH_CONTENT_PATH`, so a new
+    location would need a new variable in every content repo that wraps it.
+  - A quiz linked from lessons in *different* courses would still be written
+    twice. Pull warns when it sees one, and push refuses to write a quiz whose
+    copies disagree.
   - It is JSON, sorted and pretty-printed, to match `details.json` and
     `lessons-meta.json` and to diff cleanly. If writing questions as HTML
     strings inside JSON turns out to be unpleasant, an authoring format
@@ -181,7 +193,7 @@ operational, not content. The user tooling that exists (`sync-users`,
 ## Suggested PR sequence
 
 1. Phase 0: keep lesson metadata and non-HTML items, and correct the `CLAUDE.md`
-   docs note.
+   docs note. **Done.**
 2. The Phase 1 experiments, written up in `CLAUDE.md` (no code).
 3. 1a: pull quizzes.
 4. 1c: create quizzes.

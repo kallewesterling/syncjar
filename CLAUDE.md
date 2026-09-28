@@ -93,8 +93,22 @@ to the client must therefore be **relative to that**:
 - ✅ `client.get('/groups/{id}/users')`
 - ❌ `client.get('/v1/groups/{id}/users')` → resolves to `/v1/v1/…` → 404
 
-Full endpoint reference: <https://api.skilljar.com/docs/> (JavaScript-rendered, so
-`curl`/fetch returns an empty shell; open it in a browser).
+Full endpoint reference: <https://api.skilljar.com/docs/>. That page is
+JavaScript-rendered, so `curl` gets an empty shell, but the OpenAPI spec it
+loads is plain YAML and greps well:
+`curl -s https://api.skilljar.com/docs/schema.yml`.
+
+## lessons-meta.json: `content_items` means files
+
+Every entry in a lesson's `content_items` names an HTML file, and every
+consumer — push, preview, the Markdown export, and content repos' own tooling —
+reads `item.file` from each one. Quiz, asset and rating content items have no
+file, so the pull records them under `non_html_items` instead
+(`scripts/lesson-meta.mjs`). Keep it that way rather than adding typed entries
+to `content_items`, which would break each of those readers.
+
+Push also refuses to PUT a file whose upstream item is not `HTML`, because
+the PUT sends `type: 'HTML'` and would replace a quiz with a page.
 
 ## Destructive operations
 

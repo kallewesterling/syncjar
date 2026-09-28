@@ -14,6 +14,21 @@ and version scheme in `CLAUDE.md`.
 
 ## [Unreleased]
 
+### Added
+
+- `pull` keeps lesson metadata it used to fetch and discard (`type`,
+  `optional`, `time_seconds`, `search_keywords`, `tooltip_html`,
+  `display_fullscreen` and the `content_*_id` references), and records quiz,
+  asset and rating content items under a new `non_html_items` key. This costs
+  no extra requests. `content_items` is unchanged and still lists only HTML
+  files.
+
+### Fixed
+
+- `push` no longer PUTs a local HTML file over a content item that is not
+  `HTML` upstream. It warns and skips instead, because the PUT sends
+  `type: 'HTML'` and would have replaced a quiz, asset or rating with a page.
+
 ## [2.0.0] - 2026-09-23
 
 ### Fixed

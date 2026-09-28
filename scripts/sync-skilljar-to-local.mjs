@@ -10,6 +10,7 @@ import { slugify, readCourseDirIndex, resolveCourseDirName } from './course-dirs
 import { readLessonDirIndex, resolveLessonDirName } from './lesson-dirs.mjs';
 import { mapWithConcurrency } from './concurrency.mjs';
 import { fetchCourses, fetchLessons, fetchContentItems } from './skilljar-fetch.mjs';
+import { splitContentItems, buildLessonEntry } from './lesson-meta.mjs';
 
 dotenv.config();
 
@@ -134,9 +135,10 @@ async function syncCourse(course, dirName, table) {
       fs.ensureDir(lessonFolder)
     ]);
 
-    // Write files for items that have HTML content from the API
+    const { html: htmlItems, other: nonHtmlItems } = splitContentItems(contentItems);
+
     const contentItemsMeta = await Promise.all(
-      contentItems.filter(i => i.content_html).map(async (item) => {
+      htmlItems.map(async (item) => {
         const prefix = slugify(item.header) || 'content';
         const filename = `${prefix}-${item.id}.html`;
         const relPath = path.join('lessons', lessonSlug, filename);
@@ -161,14 +163,12 @@ async function syncCourse(course, dirName, table) {
       order: (contentItemsMeta.length + idx + 1) * 10
     }));
 
-    return {
-      id: lesson.id,
+    return buildLessonEntry({
+      lesson,
       slug: lessonSlug,
-      title: lesson.title,
-      order: lesson.order,
-      description_html: lesson.description_html || '',
-      content_items: [...contentItemsMeta, ...diskOnlyMeta]
-    };
+      contentItems: [...contentItemsMeta, ...diskOnlyMeta],
+      nonHtmlItems
+    });
   });
 
   await fs.outputJson(path.join(exportDir, 'lessons-meta.json'), lessonMetaList, { spaces: 2 });
