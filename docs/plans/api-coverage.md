@@ -95,16 +95,20 @@ Quizzes are usually few next to lessons, so the added cost is small. `GET
 Run these against a throwaway quiz created through the API and **not attached
 to any lesson**, so no learner can see it. Delete it afterwards.
 
-| Question | Why it matters |
-|---|---|
-| Can answers be changed in place? | The `PUT /quiz-questions/{id}` description says it modifies "answers", but its request schema has no `answers` field and `answers` is read-only on the response. If answers can't be edited in place, changing one means deleting and recreating the question. |
-| Does recreating a question lose learners' attempt history or reporting? | If it does, editing answers on a live quiz is a destructive act, and `push` has to treat it that way: warn, and require confirmation. |
-| How is question order set? | `order` is read-only and nothing in the create request sets it. If order is creation order, reordering also means recreating. |
-| Does attaching a quiz to a lesson work through `POST /lessons/{id}/content-items` with `type: QUIZ` and `content_quiz_id`? | This is how a new quiz becomes visible. It needs confirming for both lesson types. |
-| Do question-bank questions show up in `/quizzes/{id}/questions`, or only through `/quizzes/{id}/question-banks`? | This decides whether a quiz file has to model banks. |
+**Done** on 2026-09-28. The details are in `CLAUDE.md`, under "Quiz writes".
 
-Record the answers in `CLAUDE.md` in the same style as the `modified_at`
-section. They are exactly the kind of trap that section exists for.
+| Question | Answer |
+|---|---|
+| Can answers be changed in place? | **No.** PATCH and PUT with `answers` return 200 and change nothing. The only way is to delete and recreate the question, which gives it a new id. |
+| Can question text, type and feedback be changed in place? | **Yes**, with PATCH, but only if the body includes `quiz`. Without it, PATCH is a 400. |
+| How is question order set? | **By creation order only.** `order` in a PATCH is ignored, and a recreated question goes to the end. |
+| Does recreating a question lose learners' attempt history or reporting? | **Unknown.** Settling it needs a learner attempt on a quiz, which a throwaway quiz can't provide. Ask Skilljar support, or test on an unpublished course with a test learner. Until then, treat it as destructive. |
+| Does attaching a quiz to a lesson work through `POST /lessons/{id}/content-items`? | **Not tested, deliberately.** Content items have no DELETE, so an attachment can't be undone through the API. It needs an unpublished course to test on. |
+| Do quizzes use question banks? | **Not on the instance tested.** Banks can exist without any quiz using them, so 1a checks `/quizzes/{id}/question-banks` and warns if it finds one, rather than modelling banks in the file. |
+| Does a quiz's question list need pagination? | Not in practice: every quiz tested had well under 100 questions. 1a still follows `next`. |
+
+A 200 from a quiz write does not mean it happened, so every write in 1b and
+1c is followed by a read that confirms it.
 
 ### Step 2 (1a): pull quizzes, read-only
 
@@ -142,22 +146,33 @@ also need to ignore `lessons/**/quiz-*.json`, or lint it deliberately.
 
 - Compare the local file with the upstream quiz (the same reads as 1a), and
   show a diff in the existing `render-diff.mjs` style.
-- Writes: `PATCH /quizzes/{id}` for settings and `PATCH /quiz-questions/{id}`
-  for question fields. Answer changes and reordering follow whatever the
-  experiments found. If they need a delete and recreate, that goes behind an
-  explicit per-question confirmation, and it is never part of a bulk "yes to
-  all".
+- In-place writes: `PATCH /quizzes/{id}` for settings, and
+  `PATCH /quiz-questions/{id}` (with `quiz` in the body) for `html`, `type`
+  and feedback. These keep ids, so they are ordinary prompted changes.
+- Answer changes, added questions and reordering can only be done by
+  recreating questions. Recreating one question moves it to the end, so
+  keeping the file's order means recreating that question *and every question
+  after it*. The plan shows exactly which questions will be recreated. Each one
+  needs its own confirmation, and none are ever part of a bulk "yes to all".
+  `--force` does not apply to them.
+- Removing a question from the file deletes it upstream, under the same rules.
 - The branch guard and the `--dry-run` flag apply unchanged.
 
 ### Step 4 (1c): create new quizzes from local files
 
 - A file without an `id` (for example `quiz-new-<slug>.json`) means "create".
   The push sends `POST /quizzes`, then one `POST /quiz-questions` per question
-  in order, then attaches the quiz with a `QUIZ` content item. It then rewrites
-  the file with the new ids and renames it to `quiz-<id>.json`, so the next run
-  treats it as an edit. This matches how new HTML content items get their ids.
-- Creating is simpler than editing, because there's no answer-editing problem.
-  **If you want to start writing quizzes soon, 1c can come before 1b.**
+  in file order (creation order *is* question order), then reads the quiz back
+  to confirm it. It then rewrites the file with the new ids and renames it to
+  `quiz-<id>.json`, so the next run treats it as an edit.
+- **Creating and attaching are separate steps.** An unattached quiz is
+  invisible to learners and can be deleted, so creating it is safe to repeat.
+  Attaching it to a lesson can't be undone through the API. So 1c creates the
+  quiz and stops there. Attaching is either done in the Skilljar UI, or by a
+  separate, explicitly confirmed action once attaching has been tested on an
+  unpublished course.
+- Creating avoids the answer-editing problem entirely, so **1c comes before
+  1b**. It gets quiz authoring working soonest.
 
 ### Tests
 
@@ -177,7 +192,7 @@ Ordered by how often the content repo would want the data:
 | Rating blocks | `/lessons/{id}/rating-content-blocks` | 1 per lesson that has a `RATING` item, and only those (Phase 0 tells us which) |
 | Catalog pages | `/domains/{d}/catalog-pages` and its content blocks | 1 per domain, plus 1 or 2 per page. This is the landing-page content the courses repo builds today, so pull it before pushing any of it. |
 | Course series | `/domains/{d}/course-series` | 1 per domain |
-| Question banks | `/question-banks` | pulled with quizzes in Phase 1 if the experiments show quizzes use them, otherwise here |
+| Question banks | `/question-banks` | 1 list, plus 1 per bank. Low priority: the instance tested had quizzes that didn't use banks. |
 
 Each of these gets a `pull:<thing>` command in the style of `pull:paths`.
 Writes come later, one resource at a time.
@@ -194,7 +209,7 @@ operational, not content. The user tooling that exists (`sync-users`,
 
 1. Phase 0: keep lesson metadata and non-HTML items, and correct the `CLAUDE.md`
    docs note. **Done.**
-2. The Phase 1 experiments, written up in `CLAUDE.md` (no code).
+2. The Phase 1 experiments, written up in `CLAUDE.md` (no code). **Done.**
 3. 1a: pull quizzes.
 4. 1c: create quizzes.
 5. 1b: edit quizzes.
