@@ -223,7 +223,9 @@ to a lesson, then deleted. The spec is wrong or silent on most of this.
   undone through the API. Only deleting the lesson or course removes it.
 - **Attaching works:** `POST /lessons/{id}/content-items` with
   `{ type: 'QUIZ', content_quiz_id, header, order }` returns 201, and the quiz
-  shows in the lesson straight away.
+  shows in the lesson straight away. `header` must not be blank: `''` is a 400
+  (`This field may not be blank.`), even though items attached in the UI can
+  have an empty header. `push:quizzes --attach` uses the quiz name.
 - **`DELETE /quizzes/{id}` works** and returns 204, then 404 on read.
 
 ### What an edit does to learners who already took the quiz

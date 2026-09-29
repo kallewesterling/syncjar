@@ -145,6 +145,13 @@ visibility decides who can read them.
 
 ### Step 3 (1b): push edits to existing quizzes
 
+**Done** in `npm run push:quizzes`, together with `--attach`. Tested live on a
+test course: an in-place edit, a destructive edit refused and then allowed
+with `--recreate`, and a create with `--attach`. What changed from the plan
+below: the confirmation for destructive changes is per quiz, not per
+question. Accepting some recreations and declining others would leave the
+quiz in an order the file doesn't describe.
+
 - Compare the local file with the upstream quiz (the same reads as 1a), and
   show a diff in the existing `render-diff.mjs` style.
 - In-place writes: `PATCH /quizzes/{id}` for settings, and
@@ -221,5 +228,5 @@ operational, not content. The user tooling that exists (`sync-users`,
 2. The Phase 1 experiments, written up in `CLAUDE.md` (no code). **Done.**
 3. 1a: pull quizzes. **Done.**
 4. 1c: create quizzes. **Done.**
-5. 1b: edit quizzes.
+5. 1b: edit quizzes. **Done.**
 6. Phase 2, one resource per PR.

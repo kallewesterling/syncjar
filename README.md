@@ -101,7 +101,7 @@ npm run build:preview
 | `npm run pull:paths` | Pull learning paths, their member courses, and their per-domain slugs |
 | `npm run pull:paths -- --path <query>` | Pull a single path (partial match on directory name or title) |
 | `npm run push` | Push local edits back to Skilljar (with diffs + prompts) |
-| `npm run push:quizzes` | Create quizzes in Skilljar from local `quiz-new-*.json` files |
+| `npm run push:quizzes` | Create quizzes from `quiz-new-*.json` files, and push edits to pulled `quiz-<id>.json` files |
 | `npm run generate:courses` | Regenerate the local preview index |
 | `npm run build:preview` | Pull + generate (full refresh) |
 | `npm run serve` | Start the local preview server at http://localhost:3000 |
@@ -198,17 +198,54 @@ it's created and compared with the file. If anything differs, or a request
 fails, the half-made quiz is deleted. On success, the draft is replaced by
 the pulled form, `quiz-<id>.json`.
 
-A new quiz is **not attached to any lesson**, so learners can't see it yet.
-Add it to its lesson in Skilljar. Attaching isn't automated, because Skilljar
-has no API to remove a content item, so an attachment made through the API
-couldn't be undone.
+A new quiz is **not attached to any lesson** unless you ask, so learners can't
+see it yet. Add it to its lesson in Skilljar, or name the lesson when you
+create it:
+
+```bash
+npm run push:quizzes -- --file quiz-new-sbom-basics.json --attach <lesson_id>
+```
+
+A lesson's id is in its course's `lessons-meta.json`. `--attach` only works
+with `--file`, so it's always clear which quiz goes where. It can't be undone
+through the API, because Skilljar has no API for removing a content item. To
+detach a quiz, remove it in the Skilljar UI.
 
 Like `push`, `push:quizzes` only writes from a content repo on `dev` or `main`
 (`--allow-branch` to override). It refuses a quiz whose name already exists in
 Skilljar, since that usually means an earlier run created it.
 
-Editing existing quizzes isn't supported yet. See `docs/plans/api-coverage.md`
-for what the Skilljar API does and doesn't allow.
+### Editing a quiz
+
+Edit a pulled `quiz-<id>.json` and run `npm run push:quizzes`. It compares
+the file with Skilljar and shows each change before making it. There are two
+kinds of change, and they matter differently to learners who already took the
+quiz:
+
+| Change | How it's made | Learners who took the quiz |
+|---|---|---|
+| Quiz settings; a question's text, type, feedback or grading flags | Edited in place | The question keeps its response history |
+| A question's answers, or its position; adding a question anywhere but the end | The question is recreated, and so is every question after it | Those questions' response history is dropped from quiz analytics, and learners can no longer review their past answers. Scores and completions are kept. |
+| Removing a question | Deleted | Same as above, for that question |
+
+Skilljar can't change answers or question order in place, which is why the
+second kind recreates questions. A new question always goes to the end, so
+keeping the file's order means recreating everything after the first change.
+
+In-place edits are prompted, and `--force` skips the prompt. Anything that
+recreates or removes questions is all-or-nothing per quiz. It needs either an
+interactive yes or `--recreate <quiz_id>` for that quiz, and `--force` never
+covers it. New questions are created before old ones are deleted, so a
+failure partway leaves extra questions rather than missing ones. Every edit is
+read back and verified, and the file is rewritten with Skilljar's new ids.
+
+A quiz file that hasn't changed since its last verified push is skipped
+without a request. `--full-scan` compares everything. The record is kept in
+`.syncjar-quiz-state.json`, and a missing or deleted state file only means a
+slower run.
+
+See `CLAUDE.md` ("Quiz writes") for what the Skilljar API does and doesn't
+allow.
 
 ## 🧭 Learning Paths
 

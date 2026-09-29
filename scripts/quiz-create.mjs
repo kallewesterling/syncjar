@@ -49,11 +49,28 @@ const isBlank = (value) => typeof value !== 'string' || value.trim() === '';
  * An empty list means it can be created.
  */
 export function validateNewQuiz(file) {
+  return validateQuizFile(file, { existing: false });
+}
+
+/**
+ * The same checks for a pulled quiz that has been edited. It must carry its
+ * quiz id. A question with an id is an existing question, and one without is
+ * new. Answer ids are accepted and ignored, since answers can only be
+ * replaced as a set.
+ */
+export function validateEditedQuiz(file) {
+  return validateQuizFile(file, { existing: true });
+}
+
+function validateQuizFile(file, { existing }) {
   const errors = [];
   if (!file || typeof file !== 'object' || Array.isArray(file)) return ['the file is not a JSON object'];
 
-  if ('id' in file) {
+  if (!existing && 'id' in file) {
     errors.push('has an "id", so it looks like a pulled quiz; a new quiz has no ids');
+  }
+  if (existing && isBlank(file.id)) {
+    errors.push('has no "id"; an existing quiz file keeps the id it was pulled with');
   }
   for (const key of Object.keys(file)) {
     if (key !== 'id' && !QUIZ_KEYS.has(key)) errors.push(`unknown field "${key}"`);
@@ -89,17 +106,18 @@ export function validateNewQuiz(file) {
   }
 
   file.questions.forEach((question, i) => {
-    errors.push(...validateQuestion(question).map(e => `question ${i + 1}: ${e}`));
+    errors.push(...validateQuestion(question, { existing }).map(e => `question ${i + 1}: ${e}`));
   });
 
   return errors;
 }
 
-function validateQuestion(question) {
+function validateQuestion(question, { existing }) {
   const errors = [];
   if (!question || typeof question !== 'object' || Array.isArray(question)) return ['is not an object'];
 
-  if ('id' in question) errors.push('has an "id"; a new question has none');
+  if (!existing && 'id' in question) errors.push('has an "id"; a new question has none');
+  if (existing && 'id' in question && isBlank(question.id)) errors.push('has an empty "id"; remove it for a new question');
   for (const key of Object.keys(question)) {
     if (key !== 'id' && key !== 'answers' && !QUESTION_KEYS.has(key)) errors.push(`unknown field "${key}"`);
   }
@@ -118,7 +136,7 @@ function validateQuestion(question) {
 
   answers.forEach((answer, j) => {
     const where = `answer ${j + 1}`;
-    if ('id' in answer) errors.push(`${where} has an "id"; a new answer has none`);
+    if (!existing && 'id' in answer) errors.push(`${where} has an "id"; a new answer has none`);
     for (const key of Object.keys(answer)) {
       if (key !== 'id' && !ANSWER_KEYS.has(key)) errors.push(`${where}: unknown field "${key}"`);
     }
