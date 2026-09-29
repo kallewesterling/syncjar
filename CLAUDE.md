@@ -219,15 +219,35 @@ to a lesson, then deleted. The spec is wrong or silent on most of this.
   every quiz write must be followed by a read that confirms the change, and a
   mismatch is a failure, not a warning.
 - **Content items cannot be deleted.** `/lessons/{id}/content-items/{id}` has
-  GET, PUT and PATCH and no DELETE. Attaching a quiz to a lesson therefore
-  cannot be undone through the API. That is why attaching was not tested on a
-  live instance.
+  GET, PUT and PATCH and no DELETE, so attaching a quiz to a lesson cannot be
+  undone through the API. Only deleting the lesson or course removes it.
+- **Attaching works:** `POST /lessons/{id}/content-items` with
+  `{ type: 'QUIZ', content_quiz_id, header, order }` returns 201, and the quiz
+  shows in the lesson straight away.
 - **`DELETE /quizzes/{id}` works** and returns 204, then 404 on read.
 
-Still unknown: whether deleting and recreating a question discards learners'
-past attempts or breaks quiz reporting. Until that is settled, treat a
-recreate on a quiz learners have taken as destructive. Show it, require
-confirmation for each question, and never include it in a bulk yes.
+### What an edit does to learners who already took the quiz
+
+Established on 2026-09-29 against a test course with one test learner, who
+scored 2 of 3 before each change. Checked in the dashboard, because **the API
+exposes no quiz attempts**: lesson progress has `score` and `max_score`, but
+they stay null for a quiz inside a MODULAR lesson.
+
+| Change | Attempt score and completions | That question's response history | Learner can review their answers |
+|---|---|---|---|
+| PATCH in place (`html`, feedback, `type`) | kept | kept, shown under the new wording | not isolated (see below) |
+| Delete and recreate (the only way to change answers or order) | kept | **lost**: gone from quiz analytics; the new question starts at 0 responses | **no**: "This has been modified since you last took it. As a result, the answers are unavailable." |
+
+So on a quiz learners have taken, recreating a question costs its analytics
+history and learners' ability to review their answers. It does not cost
+scores or completions. Show each recreate, require confirmation for it, and
+never include it in a bulk yes. An in-place PATCH keeps the question's
+history and can be an ordinary prompted change.
+
+Not isolated: whether an in-place PATCH alone also hides the learner's
+answers. The quiz tested had already been recreated, which had hidden them.
+Assume it does, and treat any edit to a taken quiz as ending answer review
+for past attempts.
 
 ## Check the checkout before pushing
 
