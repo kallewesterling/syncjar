@@ -6,6 +6,7 @@ node_modules
 # it describes this checkout's content against this Skilljar instance, and a
 # missing file just means the next push scans everything.
 .syncjar-push-state.json
+.syncjar-quiz-state.json
 
 # HTML data
 public/courses

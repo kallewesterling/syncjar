@@ -31,6 +31,14 @@ and version scheme in `CLAUDE.md`.
   validates every file first (unknown fields are errors), refuses names that
   already exist, reads each quiz back to verify it, and deletes a half-made
   quiz on failure. Created quizzes are not attached to lessons.
+- `push:quizzes` pushes edits to pulled `quiz-<id>.json` files. Settings and
+  question text, type and feedback are edited in place. Changing answers or
+  order recreates the affected questions, which needs an interactive yes or
+  `--recreate <quiz_id>`; `--force` never covers it. Every edit is verified,
+  and unchanged quiz files are skipped without a request, using
+  `.syncjar-quiz-state.json`.
+- `push:quizzes --file <draft> --attach <lesson_id>` attaches a newly created
+  quiz to a lesson.
 
 ### Fixed
 

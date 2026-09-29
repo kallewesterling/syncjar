@@ -61,6 +61,7 @@ test('modules the tests import load without Skilljar credentials', () => {
     './scripts/lesson-meta.mjs',
     './scripts/quiz-files.mjs',
     './scripts/quiz-create.mjs',
+    './scripts/quiz-plan.mjs',
     './scripts/branch-guard.mjs',
     './scripts/ui.mjs'
   ]) {
