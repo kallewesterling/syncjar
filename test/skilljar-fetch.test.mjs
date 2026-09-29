@@ -1,7 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { fetchCourses, fetchLessons, fetchContentItems } from '../scripts/skilljar-fetch.mjs';
+import {
+  fetchCourses,
+  fetchLessons,
+  fetchContentItems,
+  fetchQuizzes,
+  fetchQuizQuestions,
+  fetchQuestionBanks,
+  fetchQuizQuestionBanks
+} from '../scripts/skilljar-fetch.mjs';
 
 // A stand-in for the axios client that records what it was asked for and
 // replays canned pages.
@@ -80,4 +88,30 @@ test('fetchContentItems returns an empty list when a lesson has no items', async
 test('a page with no results array does not throw', async () => {
   const client = fakeClient({ '/courses#1': { next: null } });
   assert.deepEqual(await fetchCourses(client), []);
+});
+
+// --- quizzes ----------------------------------------------------------------
+
+test('fetchQuizzes asks for the 1000-per-page maximum /quizzes allows', async () => {
+  const client = fakeClient({ '/quizzes#1': { results: [{ id: 'q1' }], next: null } });
+  assert.deepEqual(await fetchQuizzes(client), [{ id: 'q1' }]);
+  assert.equal(client.calls[0].params.page_size, 1000);
+});
+
+test('fetchQuizQuestions reads one quiz and follows pagination', async () => {
+  const client = fakeClient({
+    '/quizzes/q1/questions#1': { results: [{ id: 'a' }], next: 'next' },
+    '/quizzes/q1/questions#2': { results: [{ id: 'b' }], next: null }
+  });
+  assert.deepEqual(await fetchQuizQuestions(client, 'q1'), [{ id: 'a' }, { id: 'b' }]);
+  assert.equal(client.calls[0].params.page_size, 100);
+});
+
+test('fetchQuestionBanks and fetchQuizQuestionBanks read their lists', async () => {
+  const client = fakeClient({
+    '/question-banks#1': { results: [{ id: 'bank1' }], next: null },
+    '/quizzes/q1/question-banks#1': { results: [], next: null }
+  });
+  assert.deepEqual(await fetchQuestionBanks(client), [{ id: 'bank1' }]);
+  assert.deepEqual(await fetchQuizQuestionBanks(client, 'q1'), []);
 });

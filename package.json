@@ -15,7 +15,8 @@
     "export:users": "node scripts/export-users-to-csv.mjs",
     "export:metrics": "node scripts/metrics-to-csv.mjs",
     "check:links": "node scripts/check-links.mjs",
-    "sync:users": "node scripts/sync-users.mjs"
+    "sync:users": "node scripts/sync-users.mjs",
+    "push:quizzes": "node scripts/push-quizzes.mjs"
   },
   "author": "",
   "license": "MIT",

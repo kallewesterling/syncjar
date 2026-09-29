@@ -58,6 +58,9 @@ test('modules the tests import load without Skilljar credentials', () => {
     './scripts/concurrency.mjs',
     './scripts/course-dirs.mjs',
     './scripts/lesson-dirs.mjs',
+    './scripts/lesson-meta.mjs',
+    './scripts/quiz-files.mjs',
+    './scripts/quiz-create.mjs',
     './scripts/branch-guard.mjs',
     './scripts/ui.mjs'
   ]) {

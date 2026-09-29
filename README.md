@@ -44,6 +44,9 @@ It's your local **Skilljar workspace**: Write content, test changes, see diffs, 
 │       ├── path-items.json          # Its member courses
 │       └── published.json           # Per-domain slugs
 │
+├── local-skilljar-quizzes/
+│   └── quiz-<quiz_id>.json          # One quiz: settings, questions, answers
+│
 ├── public/
 │   ├── courses/                     # Local preview output
 │   └── data/
@@ -98,6 +101,7 @@ npm run build:preview
 | `npm run pull:paths` | Pull learning paths, their member courses, and their per-domain slugs |
 | `npm run pull:paths -- --path <query>` | Pull a single path (partial match on directory name or title) |
 | `npm run push` | Push local edits back to Skilljar (with diffs + prompts) |
+| `npm run push:quizzes` | Create quizzes in Skilljar from local `quiz-new-*.json` files |
 | `npm run generate:courses` | Regenerate the local preview index |
 | `npm run build:preview` | Pull + generate (full refresh) |
 | `npm run serve` | Start the local preview server at http://localhost:3000 |
@@ -124,6 +128,87 @@ coexist.
 
 To rename a course directory, rename it yourself. The next pull follows the new
 name, because it matches on the id.
+
+## Quizzes
+
+`npm run pull` also writes quizzes, one file per quiz, to
+`local-skilljar-quizzes/quiz-<quiz_id>.json`. Each file holds the quiz's
+settings and its questions in order, with each question's answers and which
+of them are correct.
+
+Quizzes get their own directory rather than living inside a course, because
+one quiz is often linked from lessons in several courses. A lesson points at
+its quiz through `non_html_items` in `lessons-meta.json`:
+
+```json
+"non_html_items": [
+  { "id": "<content_item_id>", "type": "QUIZ", "order": 1, "content_quiz_id": "<quiz_id>" }
+]
+```
+
+A full pull writes every quiz in the organisation, including ones no lesson
+links to, and lists those. `--course` writes only that course's quizzes.
+
+Set `QUIZ_CONTENT_PATH` to write somewhere else:
+
+```env
+QUIZ_CONTENT_PATH=../courses/quizzes
+```
+
+### Writing a new quiz
+
+Create `quiz-new-<anything>.json` in the quiz directory. The easiest start is
+to copy a pulled quiz file and delete every `"id"` line. The rest of a pulled
+file is accepted as it is. A minimal quiz:
+
+```json
+{
+  "name": "Sample: container basics check",
+  "html": "<p>Three questions on the lesson you just read.</p>",
+  "passing_percentage_correct": 70,
+  "questions": [
+    {
+      "type": "MULTIPLE_CHOICE",
+      "html": "<p>Which file lists an image's packages?</p>",
+      "answers": [
+        { "answer_text": "An SBOM", "correct": true },
+        { "answer_text": "A Dockerfile", "correct": false }
+      ]
+    }
+  ]
+}
+```
+
+Question types are `MULTIPLE_CHOICE` (exactly one correct answer),
+`MULTIPLE_ANSWER` (one or more), `FILL_IN_THE_BLANK` (every answer is an
+accepted answer, so each is `"correct": true`), and `FREEFORM` (no answers).
+Questions appear in the order they are listed.
+
+Then:
+
+```bash
+npm run push:quizzes -- --dry-run   # validate, and show what would be created
+npm run push:quizzes                # create, asking about each quiz
+```
+
+Each file is checked before anything is created. Unknown fields are errors,
+because Skilljar silently ignores fields it doesn't recognise, so a typo would
+otherwise lose a setting without telling you. Each quiz is read back after
+it's created and compared with the file. If anything differs, or a request
+fails, the half-made quiz is deleted. On success, the draft is replaced by
+the pulled form, `quiz-<id>.json`.
+
+A new quiz is **not attached to any lesson**, so learners can't see it yet.
+Add it to its lesson in Skilljar. Attaching isn't automated, because Skilljar
+has no API to remove a content item, so an attachment made through the API
+couldn't be undone.
+
+Like `push`, `push:quizzes` only writes from a content repo on `dev` or `main`
+(`--allow-branch` to override). It refuses a quiz whose name already exists in
+Skilljar, since that usually means an earlier run created it.
+
+Editing existing quizzes isn't supported yet. See `docs/plans/api-coverage.md`
+for what the Skilljar API does and doesn't allow.
 
 ## 🧭 Learning Paths
 

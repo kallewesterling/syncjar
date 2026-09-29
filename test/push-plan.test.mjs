@@ -95,6 +95,28 @@ test('a course that matches upstream produces no actions', () => {
   assert.equal(inSyncCount, 3); // course title, lesson title, content item
 });
 
+test('an item that is not HTML upstream is never pushed as HTML', () => {
+  const { actions, warnings } = planCourse(fixture({
+    localHtml: '<p>Would overwrite a quiz</p>',
+    upstreamItems: new Map([['lesson1', new Map([
+      ['item1', { id: 'item1', type: 'QUIZ', content_quiz_id: 'quiz1', content_html: '' }]
+    ])]])
+  }));
+  assert.deepEqual(actions, []);
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /QUIZ upstream/);
+});
+
+test('an upstream item typed HTML is still compared', () => {
+  const { actions } = planCourse(fixture({
+    localHtml: '<p>New</p>',
+    upstreamItems: new Map([['lesson1', new Map([
+      ['item1', { id: 'item1', type: 'HTML', content_html: '<p>Old</p>' }]
+    ])]])
+  }));
+  assert.equal(actions.length, 1);
+});
+
 test('whitespace-only markup differences are not changes', () => {
   const { actions } = planCourse(fixture({
     localHtml: '<div>\n    <p>Hi</p>\n</div>',

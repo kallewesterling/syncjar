@@ -137,6 +137,15 @@ export function planCourse({
         continue;
       }
 
+      // The apply phase PUTs with `type: 'HTML'`, which would replace a quiz,
+      // asset or rating with a page.
+      if (upstreamItem.type && upstreamItem.type !== 'HTML') {
+        warnings.push(
+          `${courseDir}/${item.file} is listed as HTML, but content item ${item.id} is ${upstreamItem.type} upstream — not pushing it; pull to reconcile`
+        );
+        continue;
+      }
+
       const localHtml = localHtmlByItemId.get(item.id);
       if (localHtml === undefined) {
         warnings.push(`${courseDir}/${item.file} is in lessons-meta.json but missing on disk`);

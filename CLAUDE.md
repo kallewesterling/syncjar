@@ -93,8 +93,22 @@ to the client must therefore be **relative to that**:
 - ✅ `client.get('/groups/{id}/users')`
 - ❌ `client.get('/v1/groups/{id}/users')` → resolves to `/v1/v1/…` → 404
 
-Full endpoint reference: <https://api.skilljar.com/docs/> (JavaScript-rendered, so
-`curl`/fetch returns an empty shell; open it in a browser).
+Full endpoint reference: <https://api.skilljar.com/docs/>. That page is
+JavaScript-rendered, so `curl` gets an empty shell, but the OpenAPI spec it
+loads is plain YAML and greps well:
+`curl -s https://api.skilljar.com/docs/schema.yml`.
+
+## lessons-meta.json: `content_items` means files
+
+Every entry in a lesson's `content_items` names an HTML file, and every
+consumer — push, preview, the Markdown export, and content repos' own tooling —
+reads `item.file` from each one. Quiz, asset and rating content items have no
+file, so the pull records them under `non_html_items` instead
+(`scripts/lesson-meta.mjs`). Keep it that way rather than adding typed entries
+to `content_items`, which would break each of those readers.
+
+Push also refuses to PUT a file whose upstream item is not `HTML`, because
+the PUT sends `type: 'HTML'` and would replace a quiz with a page.
 
 ## Destructive operations
 
@@ -181,6 +195,39 @@ never written to** — the worst a wrong skip does is not report drift, and
 `pull` is what reconciles drift anyway. Any future use of `modified_at` that
 decides to *write*, or to *not pull*, loses that property and needs the
 experiment run first.
+
+## Quiz writes: what the API does, as opposed to what the spec says
+
+Established on 2026-09-28 against throwaway quizzes that were never attached
+to a lesson, then deleted. The spec is wrong or silent on most of this.
+
+- **`PATCH /quiz-questions/{id}` needs `quiz` in the body**, even though the
+  question already belongs to one. Without it, every PATCH is a 400: `You must
+  pass either a quiz or a quiz_question_bank`.
+- **With `quiz`, PATCH edits `html`, `type` and the feedback fields in place.**
+  The question id is unchanged.
+- **Answers cannot be edited.** PATCH and PUT with an `answers` array both
+  return 200 and change nothing. There is no answer endpoint. Changing an
+  answer means deleting the question and creating it again, which gives it a
+  new id.
+- **Order cannot be set.** `order` in a PATCH is also accepted and ignored.
+  Questions are ordered by creation (`order` 10, 20, 30, …), and a recreated
+  question goes to the end. So changing one answer in the middle of a quiz
+  also moves that question to the end, unless everything after it is
+  recreated too.
+- **A 200 does not mean the write happened.** Because of the two points above,
+  every quiz write must be followed by a read that confirms the change, and a
+  mismatch is a failure, not a warning.
+- **Content items cannot be deleted.** `/lessons/{id}/content-items/{id}` has
+  GET, PUT and PATCH and no DELETE. Attaching a quiz to a lesson therefore
+  cannot be undone through the API. That is why attaching was not tested on a
+  live instance.
+- **`DELETE /quizzes/{id}` works** and returns 204, then 404 on read.
+
+Still unknown: whether deleting and recreating a question discards learners'
+past attempts or breaks quiz reporting. Until that is settled, treat a
+recreate on a quiz learners have taken as destructive. Show it, require
+confirmation for each question, and never include it in a bulk yes.
 
 ## Check the checkout before pushing
 

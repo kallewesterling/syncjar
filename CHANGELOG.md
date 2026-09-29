@@ -14,6 +14,30 @@ and version scheme in `CLAUDE.md`.
 
 ## [Unreleased]
 
+### Added
+
+- `pull` keeps lesson metadata it used to fetch and discard (`type`,
+  `optional`, `time_seconds`, `search_keywords`, `tooltip_html`,
+  `display_fullscreen` and the `content_*_id` references), and records quiz,
+  asset and rating content items under a new `non_html_items` key. This costs
+  no extra requests. `content_items` is unchanged and still lists only HTML
+  files.
+- `pull` writes quizzes, one `quiz-<id>.json` per quiz, to `QUIZ_CONTENT_PATH`
+  (default `local-skilljar-quizzes/`). A full pull writes every quiz in the
+  organisation; `--course` writes only that course's. It costs two list
+  requests plus one per quiz, and the per-quiz question-bank check is made only
+  when some bank is actually used by a quiz.
+- `npm run push:quizzes` creates quizzes from `quiz-new-*.json` files. It
+  validates every file first (unknown fields are errors), refuses names that
+  already exist, reads each quiz back to verify it, and deletes a half-made
+  quiz on failure. Created quizzes are not attached to lessons.
+
+### Fixed
+
+- `push` no longer PUTs a local HTML file over a content item that is not
+  `HTML` upstream. It warns and skips instead, because the PUT sends
+  `type: 'HTML'` and would have replaced a quiz, asset or rating with a page.
+
 ## [2.0.0] - 2026-09-23
 
 ### Fixed
