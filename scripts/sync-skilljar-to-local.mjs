@@ -9,8 +9,23 @@ import { createSkilljarClient, failCleanly } from './skilljar-client.mjs';
 import { slugify, readCourseDirIndex, resolveCourseDirName } from './course-dirs.mjs';
 import { readLessonDirIndex, resolveLessonDirName } from './lesson-dirs.mjs';
 import { mapWithConcurrency } from './concurrency.mjs';
-import { fetchCourses, fetchLessons, fetchContentItems } from './skilljar-fetch.mjs';
+import {
+  fetchCourses,
+  fetchLessons,
+  fetchContentItems,
+  fetchQuizzes,
+  fetchQuizQuestions,
+  fetchQuestionBanks,
+  fetchQuizQuestionBanks
+} from './skilljar-fetch.mjs';
 import { splitContentItems, buildLessonEntry } from './lesson-meta.mjs';
+import {
+  quizFileName,
+  buildQuizFile,
+  collectLinkedQuizIds,
+  banksInUse,
+  findStaleQuizFiles
+} from './quiz-files.mjs';
 
 dotenv.config();
 
@@ -32,6 +47,9 @@ const client = createSkilljarClient();
 // inside path.join before `||` is ever read.
 const contentPath = process.env.COURSE_CONTENT_PATH
   || path.join(__dirname, '..', 'local-skilljar');
+
+const quizContentPath = process.env.QUIZ_CONTENT_PATH
+  || path.join(__dirname, '..', 'local-skilljar-quizzes');
 
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
@@ -172,7 +190,86 @@ async function syncCourse(course, dirName, table) {
   });
 
   await fs.outputJson(path.join(exportDir, 'lessons-meta.json'), lessonMetaList, { spaces: 2 });
+  lessonsByCourseDir.set(dirName, lessonMetaList);
   table.setDone(dirName, lessons.length);
+}
+
+// Filled in by syncCourse, read by pullQuizzes once every course is done.
+const lessonsByCourseDir = new Map();
+
+const QUIZ_CONCURRENCY = 6;
+
+/**
+ * Writes quizzes to `QUIZ_CONTENT_PATH`, one file per quiz.
+ *
+ * A full pull writes every quiz in the organisation, linked or not. A quiz
+ * that push created is unattached until someone links it, and it still has to
+ * refresh. A `--course` pull writes only the quizzes that course links to.
+ *
+ * Costs one quiz list, one bank list, and one question list per quiz. The
+ * per-quiz bank check is only made when some bank is used by some quiz.
+ */
+async function pullQuizzes({ fullPull }) {
+  let requests = 0;
+  const linkedIds = new Set(
+    [...lessonsByCourseDir.values()].flatMap(lessons => [...collectLinkedQuizIds(lessons)])
+  );
+
+  const [quizzes, banks] = await Promise.all([fetchQuizzes(client), fetchQuestionBanks(client)]);
+  requests += 2;
+  const quizById = new Map(quizzes.map(q => [q.id, q]));
+  const checkBanks = banksInUse(banks);
+
+  const warnings = [];
+  for (const id of linkedIds) {
+    if (!quizById.has(id)) warnings.push(`quiz ${id} is linked from a lesson but not in the quiz list — not written`);
+  }
+
+  const targets = fullPull ? quizzes : quizzes.filter(q => linkedIds.has(q.id));
+
+  const perQuiz = await mapWithConcurrency(targets, QUIZ_CONCURRENCY, async (quiz) => {
+    const [questions, bankAssignments] = await Promise.all([
+      fetchQuizQuestions(client, quiz.id),
+      checkBanks ? fetchQuizQuestionBanks(client, quiz.id) : Promise.resolve([])
+    ]);
+    requests += checkBanks ? 2 : 1;
+    return { quiz, questions, bankAssignments };
+  });
+
+  for (const { quiz, questions, bankAssignments } of perQuiz) {
+    await fs.outputJson(
+      path.join(quizContentPath, quizFileName(quiz.id)),
+      buildQuizFile(quiz, questions),
+      { spaces: 2 }
+    );
+    if (bankAssignments.length) {
+      warnings.push(
+        `quiz ${quiz.id} ("${quiz.name}") draws from ${bankAssignments.length} question bank(s); ` +
+        `bank questions are not in its file`
+      );
+    }
+  }
+
+  // Only a full pull knows the whole upstream set, so only it can call a
+  // local file stale or a quiz unlinked.
+  let unlinked = [];
+  if (fullPull) {
+    let existing = [];
+    try { existing = await fs.readdir(quizContentPath); } catch { /* first pull */ }
+    for (const name of findStaleQuizFiles(existing, new Set(quizById.keys()))) {
+      warnings.push(`${name} is not in Skilljar any more — left in place`);
+    }
+    unlinked = quizzes.filter(q => !linkedIds.has(q.id));
+  }
+
+  for (const warning of warnings) console.warn(chalk.yellow(`! ${warning}`));
+  if (unlinked.length) {
+    console.log(chalk.gray(
+      `  ${unlinked.length} quiz(zes) not linked from any lesson: ` +
+      unlinked.map(q => `"${q.name}"`).join(', ')
+    ));
+  }
+  console.log(`✓ ${perQuiz.length} quiz(zes) written to ${quizContentPath} — ${requests} request(s).`);
 }
 
 // MAIN
@@ -238,4 +335,6 @@ async function syncCourse(course, dirName, table) {
   await withConcurrency(targets, 3, ({ course, dirName }) => syncCourse(course, dirName, table));
 
   process.stdout.write('\n✓ All courses synced.\n');
+
+  await pullQuizzes({ fullPull: !argv.course });
 })().catch(err => failCleanly(err, 'Pull failed.'));

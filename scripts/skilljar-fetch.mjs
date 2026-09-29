@@ -32,7 +32,7 @@ const PAGE_SIZE = 100;
 /**
  * Walks a paginated list endpoint and returns every result across all pages.
  */
-async function fetchAllPages(client, endpoint, params, describe) {
+async function fetchAllPages(client, endpoint, params, describe, pageSize = PAGE_SIZE) {
   const all = [];
   let page = 1;
 
@@ -40,7 +40,7 @@ async function fetchAllPages(client, endpoint, params, describe) {
     let data;
     try {
       ({ data } = await client.get(endpoint, {
-        params: { ...params, page, page_size: PAGE_SIZE }
+        params: { ...params, page, page_size: pageSize }
       }));
     } catch (err) {
       failCleanly(err, `${describe} (page ${page}).`);
@@ -92,4 +92,47 @@ export async function fetchContentItems(client, lessonId) {
     failCleanly(err, `Could not fetch content items for lesson ${lessonId}.`);
   }
   return data.results || [];
+}
+
+// `/quizzes` alone allows 1000 per page, so the whole organisation's quizzes
+// are normally one request.
+const QUIZ_PAGE_SIZE = 1000;
+
+/**
+ * Every quiz in the organisation, with its settings. Questions are not
+ * included; see fetchQuizQuestions.
+ */
+export function fetchQuizzes(client) {
+  return fetchAllPages(client, '/quizzes', {}, 'Could not list quizzes', QUIZ_PAGE_SIZE);
+}
+
+/**
+ * Every question in a quiz, answers included, in quiz order. There is no bulk
+ * form across quizzes, so this is one request per quiz.
+ */
+export function fetchQuizQuestions(client, quizId) {
+  return fetchAllPages(
+    client,
+    `/quizzes/${quizId}/questions`,
+    {},
+    `Could not list questions for quiz ${quizId}`
+  );
+}
+
+export function fetchQuestionBanks(client) {
+  return fetchAllPages(client, '/question-banks', {}, 'Could not list question banks');
+}
+
+/**
+ * The question banks a quiz draws from. Questions drawn from a bank are not
+ * in the quiz's own question list, so a quiz with banks is only partly
+ * described by fetchQuizQuestions.
+ */
+export function fetchQuizQuestionBanks(client, quizId) {
+  return fetchAllPages(
+    client,
+    `/quizzes/${quizId}/question-banks`,
+    {},
+    `Could not list question banks for quiz ${quizId}`
+  );
 }

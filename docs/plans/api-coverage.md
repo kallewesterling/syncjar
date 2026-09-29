@@ -112,35 +112,36 @@ A 200 from a quiz write does not mean it happened, so every write in 1b and
 
 ### Step 2 (1a): pull quizzes, read-only
 
-- `GET /quizzes?page_size=1000` returns every quiz and its settings.
-- For each quiz referenced by a lesson, `GET /quizzes/{id}/questions` returns
-  questions with their answers. Unreferenced quizzes are listed in a report and
-  not written, so that orphans and drafts don't flood the content repo.
-- On-disk format: `<course>/quizzes/quiz-<quiz_id>.json`, written once per
-  course however many lessons link to it. Lessons point at it through the
-  `content_quiz_id` in `non_html_items`, which Phase 0 already writes. The
-  file holds the quiz settings plus an ordered `questions` array (`id`, `type`,
-  `html`, feedback fields, and `answers` with `answer_text` and `correct`).
-  - Not `lessons/<slug>/quiz-<id>.json`: a quiz linked from two lessons would
-    then exist as two files, and push would have two sources of truth for one
-    upstream object.
-  - Inside the course folder rather than in a new top-level directory, because
-    Syncjar only knows `COURSE_CONTENT_PATH` and `PATH_CONTENT_PATH`, so a new
-    location would need a new variable in every content repo that wraps it.
-  - A quiz linked from lessons in *different* courses would still be written
-    twice. Pull warns when it sees one, and push refuses to write a quiz whose
-    copies disagree.
-  - It is JSON, sorted and pretty-printed, to match `details.json` and
-    `lessons-meta.json` and to diff cleanly. If writing questions as HTML
-    strings inside JSON turns out to be unpleasant, an authoring format
-    (Markdown or YAML) can be converted into this file later. It doesn't change
-    anything else.
-- The CI key is read-only, and that is enough: the nightly sync starts
-  mirroring quizzes as soon as this merges.
+**Done.** One file per quiz, `quiz-<id>.json`, in `QUIZ_CONTENT_PATH`: a
+directory of its own, next to the course and path directories, not inside a
+course.
 
-**Downstream, before 1a runs against a content repo:** the quiz files contain
-answer keys, so that repo's visibility decides who can read them. Its linters
-also need to ignore `lessons/**/quiz-*.json`, or lint it deliberately.
+- **Why not inside a course:** the first real pull found that sharing is the
+  norm, not the exception. Bundle courses link the same quizzes as the courses
+  they bundle, so a copy per course came to nearly three files per quiz, and
+  each edit would have to be made in every copy. A quiz belongs to the
+  organisation, as a learning path does, so it gets its own directory as paths
+  do. Lessons point at it through the `content_quiz_id` in `non_html_items`.
+- **What a pull writes:** a full pull writes every quiz in the organisation,
+  linked or not. A quiz that 1c creates stays unattached until someone links
+  it, and it still has to refresh. A `--course` pull writes only that course's
+  quizzes. Only a full pull reports quizzes that aren't linked, and local
+  files whose quiz is gone upstream (left in place, never deleted).
+- **Cost:** `/quizzes` (1000 per page) and `/question-banks`, then one
+  question list per quiz. The per-quiz bank check only runs when some bank's
+  `quiz_association_count` is non-zero, so an organisation whose banks are all
+  unused pays nothing for it.
+- **Format:** quiz settings, then an ordered `questions` array (`id`, `type`,
+  `html`, feedback and grading fields, and `answers` with `id`, `answer_text`
+  and `correct`). There's no `order` field, because array order is the order,
+  and upstream order can't be set anyway. Every field is written even when
+  unset, so any pulled file works as a template for a new quiz.
+- Repeating a pull rewrites identical bytes.
+- The CI key is read-only, and that is enough: a nightly pull mirrors quizzes
+  as soon as the content repo passes `QUIZ_CONTENT_PATH`.
+
+**Downstream:** the quiz files contain answer keys, so the content repo's
+visibility decides who can read them.
 
 ### Step 3 (1b): push edits to existing quizzes
 
@@ -165,6 +166,8 @@ also need to ignore `lessons/**/quiz-*.json`, or lint it deliberately.
   in file order (creation order *is* question order), then reads the quiz back
   to confirm it. It then rewrites the file with the new ids and renames it to
   `quiz-<id>.json`, so the next run treats it as an edit.
+- A `quiz-new-*.json` file is written to `QUIZ_CONTENT_PATH` like any other.
+  The next full pull then picks the created quiz up under its real id.
 - **Creating and attaching are separate steps.** An unattached quiz is
   invisible to learners and can be deleted, so creating it is safe to repeat.
   Attaching it to a lesson can't be undone through the API. So 1c creates the
@@ -210,7 +213,7 @@ operational, not content. The user tooling that exists (`sync-users`,
 1. Phase 0: keep lesson metadata and non-HTML items, and correct the `CLAUDE.md`
    docs note. **Done.**
 2. The Phase 1 experiments, written up in `CLAUDE.md` (no code). **Done.**
-3. 1a: pull quizzes.
+3. 1a: pull quizzes. **Done.**
 4. 1c: create quizzes.
 5. 1b: edit quizzes.
 6. Phase 2, one resource per PR.

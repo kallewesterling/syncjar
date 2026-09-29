@@ -18,6 +18,7 @@ courses-plaintext
 # local sync folders
 local-skilljar
 local-skilljar-paths
+local-skilljar-quizzes
 
 # OS stuff
 .DS_Store

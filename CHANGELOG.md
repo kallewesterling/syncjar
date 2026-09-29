@@ -22,6 +22,11 @@ and version scheme in `CLAUDE.md`.
   asset and rating content items under a new `non_html_items` key. This costs
   no extra requests. `content_items` is unchanged and still lists only HTML
   files.
+- `pull` writes quizzes, one `quiz-<id>.json` per quiz, to `QUIZ_CONTENT_PATH`
+  (default `local-skilljar-quizzes/`). A full pull writes every quiz in the
+  organisation; `--course` writes only that course's. It costs two list
+  requests plus one per quiz, and the per-quiz question-bank check is made only
+  when some bank is actually used by a quiz.
 
 ### Fixed
 

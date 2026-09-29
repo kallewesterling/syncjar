@@ -44,6 +44,9 @@ It's your local **Skilljar workspace**: Write content, test changes, see diffs, 
 │       ├── path-items.json          # Its member courses
 │       └── published.json           # Per-domain slugs
 │
+├── local-skilljar-quizzes/
+│   └── quiz-<quiz_id>.json          # One quiz: settings, questions, answers
+│
 ├── public/
 │   ├── courses/                     # Local preview output
 │   └── data/
@@ -124,6 +127,35 @@ coexist.
 
 To rename a course directory, rename it yourself. The next pull follows the new
 name, because it matches on the id.
+
+## Quizzes
+
+`npm run pull` also writes quizzes, one file per quiz, to
+`local-skilljar-quizzes/quiz-<quiz_id>.json`. Each file holds the quiz's
+settings and its questions in order, with each question's answers and which
+of them are correct.
+
+Quizzes get their own directory rather than living inside a course, because
+one quiz is often linked from lessons in several courses. A lesson points at
+its quiz through `non_html_items` in `lessons-meta.json`:
+
+```json
+"non_html_items": [
+  { "id": "<content_item_id>", "type": "QUIZ", "order": 1, "content_quiz_id": "<quiz_id>" }
+]
+```
+
+A full pull writes every quiz in the organisation, including ones no lesson
+links to, and lists those. `--course` writes only that course's quizzes.
+
+Set `QUIZ_CONTENT_PATH` to write somewhere else:
+
+```env
+QUIZ_CONTENT_PATH=../courses/quizzes
+```
+
+Pushing quiz changes is not supported yet. See `docs/plans/api-coverage.md`
+for what the Skilljar API does and doesn't allow.
 
 ## 🧭 Learning Paths
 
