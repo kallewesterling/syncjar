@@ -27,6 +27,10 @@ and version scheme in `CLAUDE.md`.
   organisation; `--course` writes only that course's. It costs two list
   requests plus one per quiz, and the per-quiz question-bank check is made only
   when some bank is actually used by a quiz.
+- `npm run push:quizzes` creates quizzes from `quiz-new-*.json` files. It
+  validates every file first (unknown fields are errors), refuses names that
+  already exist, reads each quiz back to verify it, and deletes a half-made
+  quiz on failure. Created quizzes are not attached to lessons.
 
 ### Fixed
 

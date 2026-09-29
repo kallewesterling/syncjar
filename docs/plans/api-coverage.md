@@ -161,6 +161,10 @@ visibility decides who can read them.
 
 ### Step 4 (1c): create new quizzes from local files
 
+**Done** as `npm run push:quizzes`. Tested live on a probe quiz with all four
+question types, which was then deleted. The rollback path (deleting a half-made
+quiz) hasn't run live, because nothing sent was rejected.
+
 - A file without an `id` (for example `quiz-new-<slug>.json`) means "create".
   The push sends `POST /quizzes`, then one `POST /quiz-questions` per question
   in file order (creation order *is* question order), then reads the quiz back
@@ -214,6 +218,6 @@ operational, not content. The user tooling that exists (`sync-users`,
    docs note. **Done.**
 2. The Phase 1 experiments, written up in `CLAUDE.md` (no code). **Done.**
 3. 1a: pull quizzes. **Done.**
-4. 1c: create quizzes.
+4. 1c: create quizzes. **Done.**
 5. 1b: edit quizzes.
 6. Phase 2, one resource per PR.
