@@ -102,8 +102,8 @@ to any lesson**, so no learner can see it. Delete it afterwards.
 | Can answers be changed in place? | **No.** PATCH and PUT with `answers` return 200 and change nothing. The only way is to delete and recreate the question, which gives it a new id. |
 | Can question text, type and feedback be changed in place? | **Yes**, with PATCH, but only if the body includes `quiz`. Without it, PATCH is a 400. |
 | How is question order set? | **By creation order only.** `order` in a PATCH is ignored, and a recreated question goes to the end. |
-| Does recreating a question lose learners' attempt history or reporting? | **Unknown.** Settling it needs a learner attempt on a quiz, which a throwaway quiz can't provide. Ask Skilljar support, or test on an unpublished course with a test learner. Until then, treat it as destructive. |
-| Does attaching a quiz to a lesson work through `POST /lessons/{id}/content-items`? | **Not tested, deliberately.** Content items have no DELETE, so an attachment can't be undone through the API. It needs an unpublished course to test on. |
+| Does recreating a question lose learners' attempt history or reporting? | **Partly.** Tested on a test course with a test learner. Scores and completions survive. The question's response history disappears from quiz analytics, and learners can no longer review their answers. An in-place PATCH keeps the question's history. Details in `CLAUDE.md`. |
+| Does attaching a quiz to a lesson work through `POST /lessons/{id}/content-items`? | **Yes.** `type: QUIZ` with `content_quiz_id` returns 201, tested on a test course. It still can't be undone through the API. |
 | Do quizzes use question banks? | **Not on the instance tested.** Banks can exist without any quiz using them, so 1a checks `/quizzes/{id}/question-banks` and warns if it finds one, rather than modelling banks in the file. |
 | Does a quiz's question list need pagination? | Not in practice: every quiz tested had well under 100 questions. 1a still follows `next`. |
 
@@ -155,7 +155,9 @@ visibility decides who can read them.
   keeping the file's order means recreating that question *and every question
   after it*. The plan shows exactly which questions will be recreated. Each one
   needs its own confirmation, and none are ever part of a bulk "yes to all".
-  `--force` does not apply to them.
+  `--force` does not apply to them. The prompt says what is lost: that
+  question's response history in quiz analytics, and learners' review of
+  their past answers. Scores and completions are kept.
 - Removing a question from the file deletes it upstream, under the same rules.
 - The branch guard and the `--dry-run` flag apply unchanged.
 
@@ -175,9 +177,9 @@ quiz) hasn't run live, because nothing sent was rejected.
 - **Creating and attaching are separate steps.** An unattached quiz is
   invisible to learners and can be deleted, so creating it is safe to repeat.
   Attaching it to a lesson can't be undone through the API. So 1c creates the
-  quiz and stops there. Attaching is either done in the Skilljar UI, or by a
-  separate, explicitly confirmed action once attaching has been tested on an
-  unpublished course.
+  quiz and stops there. Attaching through the API has since been shown to
+  work, so a follow-up can add an explicitly confirmed `--attach <lesson>`
+  that is never implied by `--force`.
 - Creating avoids the answer-editing problem entirely, so **1c comes before
   1b**. It gets quiz authoring working soonest.
 
