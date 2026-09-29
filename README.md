@@ -149,6 +149,13 @@ its quiz through `non_html_items` in `lessons-meta.json`:
 A full pull writes every quiz in the organisation, including ones no lesson
 links to, and lists those. `--course` writes only that course's quizzes.
 
+**Deleting a course doesn't delete its quizzes.** A quiz belongs to the
+organisation, not to a course. When you delete a course in Skilljar, its
+quizzes stay, and so, through the API, do its lessons. The next full pull still
+writes those quizzes, and lists them as not linked from any lesson. If you
+don't want them, delete them in Skilljar. See `CLAUDE.md` ("Quiz writes") for
+the API cleanup.
+
 Set `QUIZ_CONTENT_PATH` to write somewhere else:
 
 ```env

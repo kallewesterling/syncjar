@@ -227,6 +227,18 @@ to a lesson, then deleted. The spec is wrong or silent on most of this.
   (`This field may not be blank.`), even though items attached in the UI can
   have an empty header. `push:quizzes --attach` uses the quiz name.
 - **`DELETE /quizzes/{id}` works** and returns 204, then 404 on read.
+- **Deleting a course in the UI leaves its contents behind.** Seen on
+  2026-09-29: after a course was deleted in the dashboard, `GET /courses/{id}`
+  was a 404 and the course had left `GET /courses`. But its lessons still
+  read back with `GET /lessons/{id}`, still listed under
+  `GET /lessons?course_id=`, and still linked their quizzes, and the quizzes
+  were untouched. A quiz is an organisation-level object, so nothing removes
+  it with the course. Since a full pull writes every quiz, including unlinked
+  ones, a deleted course's quizzes keep arriving in the quiz directory. The
+  cleanup is `DELETE /lessons/{id}` for each lesson, which removes its quiz
+  links, then `DELETE /quizzes/{id}` for each quiz nothing else uses. Both
+  return 204, then 404 on read. Pull won't see the orphaned lessons, because it
+  starts from the course list.
 
 ### What an edit does to learners who already took the quiz
 
