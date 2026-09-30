@@ -45,6 +45,8 @@ and version scheme in `CLAUDE.md`.
 - `push` no longer PUTs a local HTML file over a content item that is not
   `HTML` upstream. It warns and skips instead, because the PUT sends
   `type: 'HTML'` and would have replaced a quiz, asset or rating with a page.
+- The `push:quizzes` plan summary strips tags from its excerpts until none
+  are left, rather than in one pass that could splice a new tag together.
 
 ## [2.0.0] - 2026-09-23
 

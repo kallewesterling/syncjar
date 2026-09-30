@@ -175,8 +175,16 @@ export function questionPatchBody(quizId, patch) {
   return { quiz: quizId, ...Object.fromEntries(Object.entries(patch.fields).map(([field, { to }]) => [field, to])) };
 }
 
+// Only ever printed, and JSON-quoted, but tags are still stripped until none
+// are left, so a removal can't splice a new one together out of its neighbours.
 const excerpt = (value) => {
-  const text = String(value ?? '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+  let text = String(value ?? '');
+  let previous;
+  do {
+    previous = text;
+    text = text.replace(/<[^>]+>/g, '');
+  } while (text !== previous);
+  text = text.replace(/\s+/g, ' ').trim();
   return JSON.stringify(text.length > 70 ? `${text.slice(0, 67)}…` : text);
 };
 
