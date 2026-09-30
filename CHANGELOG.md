@@ -39,6 +39,11 @@ and version scheme in `CLAUDE.md`.
   `.syncjar-quiz-state.json`.
 - `push:quizzes --file <draft> --attach <lesson_id>` attaches a newly created
   quiz to a lesson.
+- `scripts/group-audit.mjs --group <id> --roster <csv>` lists the members of
+  a student group who are not on a roster. It reads, and never writes to,
+  Skilljar in one paginated sweep, and writes a CSV that
+  `revoke-access.mjs --in` reads directly. It warns when the roster file is
+  older than `--max-age-days` (default 14).
 
 ### Fixed
 
