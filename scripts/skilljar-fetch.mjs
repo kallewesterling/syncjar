@@ -119,6 +119,23 @@ export function fetchQuizQuestions(client, quizId) {
   );
 }
 
+/**
+ * Every member of a student group. One paginated sweep, about five requests
+ * for a 400-member group. Checking members one at a time costs three calls
+ * each, and Skilljar throttles hard long before a group that size is done.
+ *
+ * Rows are returned as the API sends them. Read each as `row.user ?? row`,
+ * as the other user scripts do, rather than assuming one shape.
+ */
+export function fetchGroupMembers(client, groupId) {
+  return fetchAllPages(
+    client,
+    `/groups/${groupId}/users`,
+    {},
+    `Could not list members of group ${groupId}`
+  );
+}
+
 export function fetchQuestionBanks(client) {
   return fetchAllPages(client, '/question-banks', {}, 'Could not list question banks');
 }
