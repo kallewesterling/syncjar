@@ -112,7 +112,7 @@ npm run build:preview
 | `npm run build:preview` | Pull + generate (full refresh) |
 | `npm run serve` | Start the local preview server at http://localhost:3000 |
 | `npm run export:plaintext` | Export course content as Markdown |
-| `npm run export:users` | Export Skilljar users to CSV |
+| `npm run export:users -- --internal-domain <domain>` | Export Skilljar users to CSV, flagging users at `<domain>` as internal (or set `SYNCJAR_INTERNAL_DOMAIN`) |
 | `npm run export:metrics` | Export course metrics to CSV |
 | `npm run export:students` | Export the flat Skilljar student list to CSV |
 | `npm run check:links` | Check for broken links in course content |
@@ -355,10 +355,11 @@ This starts a local server at [http://localhost:3000](http://localhost:3000). Ea
 
 ## 🎨 Theming
 
-Add your Skilljar theme CSS and JS URLs to `preview.config.json` at the project root:
+Copy `preview.config.example.json` to `preview.config.json` at the project root, and fill in your Skilljar domain and theme URLs. `preview.config.json` is gitignored, so your real URLs stay out of the repo:
 
 ```json
 {
+  "baseURL": "https://your-skilljar-domain.com",
   "theme": {
     "css": [
       "https://your-skilljar-domain.com/path/to/theme.css"
@@ -370,7 +371,7 @@ Add your Skilljar theme CSS and JS URLs to `preview.config.json` at the project 
 }
 ```
 
-The preview server injects these into each lesson iframe at render time. Leave the arrays empty to preview unstyled content. You may want to add `preview.config.json` to `.gitignore` if it contains internal URLs.
+The preview server injects these into each lesson iframe at render time. Leave the arrays empty, or skip the file entirely, to preview unstyled content.
 
 ### 📤 Push changes upstream (local → Skilljar)
 

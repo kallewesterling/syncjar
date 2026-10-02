@@ -41,22 +41,22 @@ test('listCourseDirs returns empty for a missing content path', async () => {
   assert.deepEqual(await listCourseDirs('/no/such/path/anywhere'), []);
 });
 
-// This is the regression the fix exists for. On courses@6d363fd8 the pull wrote
-// courses/Build-your-first-Chainguard-container next to the existing
-// courses/Build-Your-First-Chainguard-Container, both holding id 3j1nxo2spsxv2.
+// This is the regression the fix exists for. A title change that only altered
+// case made the pull write courses/Build-your-first-example-widget next to the
+// existing courses/Build-Your-First-Example-Widget, both holding the same id.
 test('an existing course id keeps its directory name after a title change', async () => {
   const root = await makeTree({
-    'Build-Your-First-Chainguard-Container': { id: '3j1nxo2spsxv2', title: 'Build Your First Chainguard Container' }
+    'Build-Your-First-Example-Widget': { id: 'ex4mpl3c0urs3', title: 'Build Your First Example Widget' }
   });
   const index = await readCourseDirIndex(root);
 
   const dirName = resolveCourseDirName(index, {
-    id: '3j1nxo2spsxv2',
-    title: 'Build your first Chainguard container'
+    id: 'ex4mpl3c0urs3',
+    title: 'Build your first example widget'
   });
 
-  assert.equal(dirName, 'Build-Your-First-Chainguard-Container');
-  assert.notEqual(dirName, slugify('Build your first Chainguard container'));
+  assert.equal(dirName, 'Build-Your-First-Example-Widget');
+  assert.notEqual(dirName, slugify('Build your first example widget'));
 });
 
 test('a course id new to the tree is named from its title', async () => {
