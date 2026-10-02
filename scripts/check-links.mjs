@@ -11,12 +11,23 @@ const __dirname = path.dirname(__filename);
 const coursesPath = path.join(__dirname, '..', 'public', 'courses');
 const outputReport = path.join(__dirname, '..', 'public', 'data', 'link-report.json');
 
-const isIgnorable = href =>
-  href.startsWith('#') ||
-  href.startsWith('mailto:') ||
-  href.includes('localhost') ||
-  href.includes('accounts.example.com') ||
-  href.includes('foocorp-registry.com');
+// Matched on the parsed host, so `https://evil.test/?localhost` is still
+// checked. Subdomains of an ignored host are ignored too.
+const IGNORED_HOSTS = ['localhost', 'accounts.example.com', 'foocorp-registry.com'];
+
+const hostOf = href => {
+  try {
+    return new URL(href).hostname;
+  } catch {
+    return '';
+  }
+};
+
+const isIgnorable = href => {
+  if (href.startsWith('#') || href.startsWith('mailto:')) return true;
+  const host = hostOf(href);
+  return IGNORED_HOSTS.some(h => host === h || host.endsWith(`.${h}`));
+};
 
 const allLinks = new Map();
 

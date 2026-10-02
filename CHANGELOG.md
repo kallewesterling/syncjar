@@ -52,6 +52,10 @@ and version scheme in `CLAUDE.md`.
   `type: 'HTML'` and would have replaced a quiz, asset or rating with a page.
 - The `push:quizzes` plan summary strips tags from its excerpts until none
   are left, rather than in one pass that could splice a new tag together.
+- The preview sets the lesson title as text, not HTML, so markup in a title
+  from Skilljar is shown rather than run.
+- `check-links` skips ignored hosts by their parsed hostname, not by a
+  substring anywhere in the URL.
 
 ## [2.0.0] - 2026-09-23
 
