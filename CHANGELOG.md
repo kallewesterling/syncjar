@@ -50,6 +50,15 @@ and version scheme in `CLAUDE.md`.
 
 ### Changed
 
+- `preview.config.json` is no longer tracked. It held a real Skilljar
+  domain and theme URLs. `preview.config.example.json` is the template, and
+  `serve` previews unstyled when the file is missing. An existing local copy is
+  left in place, but **pulling this change deletes the file from any other
+  clone that has it**. Back it up first.
+- `export:users` takes the internal domain from `--internal-domain` or
+  `SYNCJAR_INTERNAL_DOMAIN` instead of hardcoding one. The CSV column
+  `Chainguard employee` is now `Internal user`, and it is `false` for everyone
+  when no domain is set.
 - `scripts/` is split into `src/commands/`, one file per npm script and named
   for it (`push:quizzes` is `src/commands/push/quizzes.mjs`), and `src/lib/`,
   modules that do nothing on import. Every npm script keeps its name, so

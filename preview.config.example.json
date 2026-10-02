@@ -1,0 +1,9 @@
+{
+  "baseURL": "https://courses.example.com",
+  "theme": {
+    "css": [
+      "https://courses.example.com/path/to/theme.css"
+    ],
+    "js": []
+  }
+}

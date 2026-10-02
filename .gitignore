@@ -21,5 +21,9 @@ local-skilljar
 local-skilljar-paths
 local-skilljar-quizzes
 
+# Preview theme config. Holds a real Skilljar domain and theme URLs, so it is
+# local; copy preview.config.example.json to start one.
+preview.config.json
+
 # OS stuff
 .DS_Store

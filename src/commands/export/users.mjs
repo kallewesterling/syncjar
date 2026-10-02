@@ -2,6 +2,19 @@ import fs from 'fs-extra';
 import path from 'path';
 import { repoRoot } from '#lib/paths.mjs';
 import { parse } from 'json2csv';
+import yargs from 'yargs';
+import { hideBin } from 'yargs/helpers';
+
+const argv = yargs(hideBin(process.argv))
+  .option('internal-domain', {
+    type: 'string',
+    default: process.env.SYNCJAR_INTERNAL_DOMAIN,
+    describe: 'Email domain whose users count as internal (env: SYNCJAR_INTERNAL_DOMAIN)'
+  })
+  .help()
+  .argv;
+
+const internalDomain = argv.internalDomain?.toLowerCase();
 
 const inputPath = path.join(repoRoot, 'public', 'data', 'user-progress.json');
 const outputPath = path.join(repoRoot, 'public', 'data', 'user-report.csv');
@@ -18,7 +31,7 @@ const rows = users.map((user, i) => {
     d ? `${d.getFullYear()}-${d.toLocaleString('default', { month: 'short' })}-${d.getDate()}` : '';
 
   const domain = email.split('@')[1];
-  const isChainguard = domain === 'chainguard.dev';
+  const isInternal = Boolean(internalDomain) && domain?.toLowerCase() === internalDomain;
   const noActivity = !latest;
 
   return {
@@ -29,7 +42,7 @@ const rows = users.map((user, i) => {
     'Enrolled At': formatDate(enrolledAt),
     'Latest Activity': formatDate(latest),
     'Domain': domain,
-    'Chainguard employee': isChainguard,
+    'Internal user': isInternal,
     'No activity': noActivity
   };
 });
