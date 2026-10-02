@@ -1,15 +1,12 @@
 import fs from 'fs-extra';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import { repoRoot } from '#lib/paths.mjs';
 import { glob } from 'glob';
 import fetch from 'node-fetch';
 import { JSDOM } from 'jsdom';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const coursesPath = path.join(__dirname, '..', 'public', 'courses');
-const outputReport = path.join(__dirname, '..', 'public', 'data', 'link-report.json');
+const coursesPath = path.join(repoRoot, 'public', 'courses');
+const outputReport = path.join(repoRoot, 'public', 'data', 'link-report.json');
 
 // Matched on the parsed host, so `https://evil.test/?localhost` is still
 // checked. Subdomains of an ignored host are ignored too.

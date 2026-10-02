@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'child_process';
+import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
@@ -47,23 +48,21 @@ function importWithoutCredentials(relativeModule) {
 // developer machine has a .env. A module the tests import must not need
 // credentials merely to be loaded — the credentials are for making requests,
 // and no test makes one.
+//
+// Every module in src/lib/ is held to this, found by walking the directory
+// rather than listed, so a new one cannot be forgotten. Commands in
+// src/commands/ run on import and are exempt — except the two the tests
+// import, which guard their entry points and are listed here by hand.
 test('modules the tests import load without Skilljar credentials', () => {
+  const lib = fs.readdirSync(path.join(root, 'src', 'lib'), { recursive: true })
+    .filter((name) => name.endsWith('.mjs'))
+    .map((name) => `./src/lib/${name.split(path.sep).join('/')}`);
+  assert.ok(lib.length > 0, 'found no modules under src/lib/');
+
   for (const mod of [
-    './scripts/sync-users.mjs',
-    './scripts/push-state.mjs',
-    './scripts/push-plan.mjs',
-    './scripts/push-args.mjs',
-    './scripts/render-diff.mjs',
-    './scripts/skilljar-fetch.mjs',
-    './scripts/concurrency.mjs',
-    './scripts/course-dirs.mjs',
-    './scripts/lesson-dirs.mjs',
-    './scripts/lesson-meta.mjs',
-    './scripts/quiz-files.mjs',
-    './scripts/quiz-create.mjs',
-    './scripts/quiz-plan.mjs',
-    './scripts/branch-guard.mjs',
-    './scripts/ui.mjs'
+    ...lib,
+    './src/commands/pull/paths.mjs',
+    './src/commands/sync/users.mjs'
   ]) {
     const failure = importWithoutCredentials(mod);
     assert.equal(failure, null, `importing ${mod} without credentials failed:\n${failure}`);

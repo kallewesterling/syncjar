@@ -52,18 +52,24 @@ It's your local **Skilljar workspace**: Write content, test changes, see diffs, 
 │   └── data/
 │       └── courses.json             # Course structure for preview UI
 │
-├── scripts/
-│   ├── sync-skilljar-to-local.mjs   # Pull from Skilljar
-│   ├── sync-local-to-skilljar.mjs   # Push to Skilljar (with diffing)
-│   ├── pull-slugs.mjs               # Pull per-domain URL slugs
-│   ├── pull-paths.mjs               # Pull learning paths and their members
-│   ├── course-dirs.mjs              # Map course ids to course directories
-│   ├── generate-courses-json.mjs    # Create preview course index
-│   ├── export-courses-to-md.mjs     # Export course content as Markdown
-│   ├── export-users-to-csv.mjs      # Export Skilljar users to CSV
-│   ├── metrics-to-csv.mjs           # Export course metrics to CSV
-│   ├── check-links.mjs              # Check for broken links in content
-│   ├── sync-users.mjs               # Sync user data from Skilljar
+├── src/
+│   ├── commands/                    # One file per npm script; runs on import
+│   │   ├── pull/                    # pull (index.mjs), pull:slugs, pull:paths
+│   │   ├── push/                    # push (index.mjs), push:quizzes
+│   │   ├── export/                  # export:plaintext, :users, :metrics, :students
+│   │   ├── check/                   # check:links, check:membership
+│   │   ├── group/                   # group:audit, group:revoke
+│   │   ├── sync/                    # sync:users
+│   │   ├── generate/                # generate:courses
+│   │   └── serve.mjs                # serve
+│   └── lib/                         # Importable modules; nothing runs on import
+│       ├── skilljar/                # API client and paginated list reads
+│       ├── content/                 # The local course, lesson and quiz trees
+│       ├── push/                    # Push planning, state, diffs, quiz plans
+│       ├── groups/                  # Group audit logic
+│       └── paths.mjs, ui.mjs, …     # Shared helpers
+│
+├── test/                            # node --test; imports lib as #lib/*
 │
 ├── .env                             # API key
 └── README.md
@@ -108,8 +114,12 @@ npm run build:preview
 | `npm run export:plaintext` | Export course content as Markdown |
 | `npm run export:users` | Export Skilljar users to CSV |
 | `npm run export:metrics` | Export course metrics to CSV |
+| `npm run export:students` | Export the flat Skilljar student list to CSV |
 | `npm run check:links` | Check for broken links in course content |
+| `npm run check:membership -- --group <id>` | Report whether users are still in a student group (read-only) |
 | `npm run sync:users` | Sync user data from Skilljar |
+| `npm run group:audit -- --group <id> --roster <csv>` | List group members who are not on a roster (read-only) |
+| `npm run group:revoke -- --in <csv> --group <id>` | Revoke access for a reviewed list of users |
 | `npm test` | Run the unit tests |
 
 ## 🗃 Course Directory Names

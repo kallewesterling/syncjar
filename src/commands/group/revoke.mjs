@@ -1,5 +1,5 @@
 /**
- * revoke-access.mjs — drop into syncjar's scripts/
+ * npm run group:revoke
  *
  * Revokes Skilljar access for a reviewed list of users. Two independent
  * actions, both REVERSIBLE, neither of which deletes anything:
@@ -21,15 +21,15 @@
  *
  * Usage:
  *   # see what would happen
- *   node scripts/revoke-access.mjs --in deactivate-candidates.csv \
+ *   npm run group:revoke -- --in deactivate-candidates.csv \
  *        --domain <your-domain>
  *
  *   # actually do it
- *   node scripts/revoke-access.mjs --in deactivate-candidates.csv \
+ *   npm run group:revoke -- --in deactivate-candidates.csv \
  *        --domain <your-domain> --confirm
  *
  *   # undo
- *   node scripts/revoke-access.mjs --in deactivate-candidates.csv \
+ *   npm run group:revoke -- --in deactivate-candidates.csv \
  *        --domain <your-domain> --reactivate --confirm
  *
  * Every run writes an audit CSV recording the prior state of each record,
@@ -38,15 +38,13 @@
 
 import fs from 'fs-extra';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import { repoRoot } from '#lib/paths.mjs';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import { parse } from 'json2csv';
 import chalk from 'chalk';
 import readline from 'node:readline/promises';
-import { createSkilljarClient } from './skilljar-client.mjs';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+import { createSkilljarClient } from '#lib/skilljar/client.mjs';
 
 const argv = yargs(hideBin(process.argv))
   .option('in', { type: 'string', demandOption: true, describe: 'CSV of users to act on (needs skilljar_id + email)' })
@@ -56,7 +54,7 @@ const argv = yargs(hideBin(process.argv))
   .option('limit', { type: 'number', describe: 'Only act on the first N users. Use --limit 1 to test on one person.' })
   .option('only-email', { type: 'string', describe: 'Act on this single email address only (must be present in --in)' })
   .option('confirm', { type: 'boolean', default: false, describe: 'Actually write. Without this it is a dry run.' })
-  .option('audit-dir', { type: 'string', default: path.join(__dirname, '..', 'public', 'data') })
+  .option('audit-dir', { type: 'string', default: path.join(repoRoot, 'public', 'data') })
   .check((a) => {
     if (!a.domain.length && !a.group.length) throw new Error('Pass at least one --domain or --group.');
     if (a.reactivate && a.group.length) throw new Error('--reactivate applies to --domain only; re-add to groups deliberately.');

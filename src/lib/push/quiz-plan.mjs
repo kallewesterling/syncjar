@@ -21,8 +21,8 @@
  * with no history, so they can be removed without loss.
  */
 import crypto from 'crypto';
-import { QUIZ_SETTINGS } from './quiz-files.mjs';
-import { normalizeHtml } from './push-plan.mjs';
+import { QUIZ_SETTINGS } from '#lib/content/quiz-files.mjs';
+import { normalizeHtml } from '#lib/push/plan.mjs';
 
 const present = (value) => value !== undefined && value !== null;
 

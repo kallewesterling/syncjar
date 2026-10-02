@@ -12,8 +12,8 @@
  * would otherwise be dropped without a trace. Nothing in this module makes a
  * request.
  */
-import { QUIZ_SETTINGS, QUESTION_FIELDS } from './quiz-files.mjs';
-import { normalizeHtml } from './push-plan.mjs';
+import { QUIZ_SETTINGS, QUESTION_FIELDS } from '#lib/content/quiz-files.mjs';
+import { normalizeHtml } from '#lib/push/plan.mjs';
 
 export const QUESTION_TYPES = ['MULTIPLE_CHOICE', 'MULTIPLE_ANSWER', 'FILL_IN_THE_BLANK', 'FREEFORM'];
 const ALIGNMENTS = ['left', 'center', 'right'];

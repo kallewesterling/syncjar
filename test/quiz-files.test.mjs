@@ -10,7 +10,7 @@ import {
   findStaleQuizFiles,
   QUIZ_SETTINGS,
   QUESTION_FIELDS
-} from '../scripts/quiz-files.mjs';
+} from '#lib/content/quiz-files.mjs';
 
 // Invented sample data, shaped like `GET /quizzes` and
 // `GET /quizzes/{id}/questions`.

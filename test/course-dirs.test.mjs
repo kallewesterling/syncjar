@@ -9,7 +9,7 @@ import {
   listCourseDirs,
   readCourseDirIndex,
   resolveCourseDirName
-} from '../scripts/course-dirs.mjs';
+} from '#lib/content/course-dirs.mjs';
 
 // Builds a throwaway content path. `tree` maps a directory name to the object
 // written as its details.json, to a raw string written verbatim, or to null for

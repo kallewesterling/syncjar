@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { normalizeHtml, planCourse } from '../scripts/push-plan.mjs';
+import { normalizeHtml, planCourse } from '#lib/push/plan.mjs';
 
 // --- normalizeHtml ---------------------------------------------------------
 

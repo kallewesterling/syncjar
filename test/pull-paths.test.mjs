@@ -7,7 +7,7 @@ import {
   samePublished,
   sameJson,
   isOrphanedPublished
-} from '../scripts/pull-paths.mjs';
+} from '../src/commands/pull/paths.mjs';
 
 // Importing the script must not require an API key or hit the network: main()
 // is only invoked when the file is run directly. If this import ever starts

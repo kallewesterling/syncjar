@@ -5,7 +5,7 @@ import {
   splitContentItems,
   describeNonHtmlItem,
   buildLessonEntry
-} from '../scripts/lesson-meta.mjs';
+} from '#lib/content/lesson-meta.mjs';
 
 // Invented sample data. Mirrors the shape of `GET /lessons` and
 // `GET /lessons/{id}/content-items`, not any real course.

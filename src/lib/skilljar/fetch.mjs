@@ -23,7 +23,7 @@
  * the local tree on pull, to the live LMS on push — so continuing past a
  * failed page would act on a partial collection as though it were complete.
  */
-import { failCleanly } from './skilljar-client.mjs';
+import { failCleanly } from '#lib/skilljar/client.mjs';
 
 // Skilljar's maximum. Fewer, larger pages is strictly better here: the cost is
 // the round trip, not the bytes.

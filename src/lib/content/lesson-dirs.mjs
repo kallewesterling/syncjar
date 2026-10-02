@@ -26,7 +26,7 @@
  */
 import fs from 'fs-extra';
 import path from 'path';
-import { slugify } from './course-dirs.mjs';
+import { slugify } from '#lib/content/course-dirs.mjs';
 
 /**
  * Reads a course's existing lessons-meta.json (if any) and indexes it by

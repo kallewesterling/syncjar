@@ -11,7 +11,7 @@ import {
   writeState,
   shouldSkip,
   recordCourse
-} from '../scripts/push-state.mjs';
+} from '#lib/push/state.mjs';
 
 function course({
   title = 'Crush your CVEs',

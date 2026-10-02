@@ -1,10 +1,6 @@
 import fs from 'fs-extra';
 import path from 'path';
-import { fileURLToPath } from 'url';
-
-// __dirname workaround for ESM
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import { repoRoot } from '#lib/paths.mjs';
 
 // Load Skilljar auth
 import dotenv from 'dotenv';
@@ -20,9 +16,9 @@ function slugify(text) {
 }
 
 async function generateCoursesJson() {
-  const exportedDir = process.env.COURSE_CONTENT_PATH || path.join(__dirname, '..', 'local-skilljar');
-  const outputPath = path.join(__dirname, '..', 'public', 'data', 'courses.json');
-  const publicCoursesDir = path.join(__dirname, '..', 'public', 'courses');
+  const exportedDir = process.env.COURSE_CONTENT_PATH || path.join(repoRoot, 'local-skilljar');
+  const outputPath = path.join(repoRoot, 'public', 'data', 'courses.json');
+  const publicCoursesDir = path.join(repoRoot, 'public', 'courses');
 
   const courseDirs = await fs.readdir(exportedDir);
   const courseIndex = {};
@@ -55,7 +51,7 @@ async function generateCoursesJson() {
         await fs.copyFile(srcFile, finalPath);
 
         const relativePath = path.relative(
-          path.join(__dirname, '..', 'public'),
+          path.join(repoRoot, 'public'),
           finalPath
         ).replace(/\\/g, '/');
 

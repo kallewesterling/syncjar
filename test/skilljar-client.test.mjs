@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { redactError } from '../scripts/skilljar-client.mjs';
+import { redactError } from '#lib/skilljar/client.mjs';
 
 const API_KEY = 'sk-live-notarealkey';
 

@@ -1,13 +1,10 @@
 import fs from 'fs-extra';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import { repoRoot } from '#lib/paths.mjs';
 import { parse } from 'json2csv';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const inputPath = path.join(__dirname, '..', 'public', 'data', 'user-progress.json');
-const outputPath = path.join(__dirname, '..', 'public', 'data', 'user-report.csv');
+const inputPath = path.join(repoRoot, 'public', 'data', 'user-progress.json');
+const outputPath = path.join(repoRoot, 'public', 'data', 'user-report.csv');
 
 const users = await fs.readJson(inputPath);
 

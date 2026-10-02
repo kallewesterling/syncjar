@@ -40,32 +40,31 @@
  *                       skips published.json, since slugs are per-domain.
  *
  * Usage:
- *   node scripts/pull-paths.mjs
- *   node scripts/pull-paths.mjs --path "onboarding"
- *   node scripts/pull-paths.mjs --domain courses.example.com
- *   node scripts/pull-paths.mjs --dry-run
- *   node scripts/pull-paths.mjs --check     # CI: exit non-zero if any file is stale/missing
+ *   npm run pull:paths
+ *   npm run pull:paths -- --path "onboarding"
+ *   npm run pull:paths -- --domain courses.example.com
+ *   npm run pull:paths -- --dry-run
+ *   npm run pull:paths -- --check     # CI: exit non-zero if any file is stale/missing
  */
 import fs from 'fs-extra';
 import path from 'path';
-import { fileURLToPath, pathToFileURL } from 'url';
+import { pathToFileURL } from 'url';
+import { repoRoot } from '#lib/paths.mjs';
 import dotenv from 'dotenv';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import chalk from 'chalk';
-import { createSkilljarClient, failCleanly } from './skilljar-client.mjs';
-import { slugify, readCourseDirIndex, resolveCourseDirName } from './course-dirs.mjs';
+import { createSkilljarClient, failCleanly } from '#lib/skilljar/client.mjs';
+import { slugify, readCourseDirIndex, resolveCourseDirName } from '#lib/content/course-dirs.mjs';
 
 dotenv.config();
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Paths get their own content root rather than a subdirectory of the course
 // one, so that a tree of course directories stays a tree of course
 // directories — `readCourseDirIndex` identifies a directory by the `id` in its
 // details.json, and a path id sitting in that tree would be indistinguishable
 // from a course id.
-export const defaultContentPath = path.join(__dirname, '..', 'local-skilljar-paths');
+export const defaultContentPath = path.join(repoRoot, 'local-skilljar-paths');
 
 /**
  * Directory-name and title matching for --path.

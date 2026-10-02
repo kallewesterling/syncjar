@@ -16,10 +16,10 @@
  *   SKILLJAR_DOMAINS      required unless --domain is passed; comma-separated
  *
  * Usage:
- *   node scripts/pull-slugs.mjs
- *   node scripts/pull-slugs.mjs --domain courses.example.com --domain example.skilljar.com
- *   node scripts/pull-slugs.mjs --dry-run
- *   node scripts/pull-slugs.mjs --check        # CI: exit non-zero if any published.json is stale/missing
+ *   npm run pull:slugs
+ *   npm run pull:slugs -- --domain courses.example.com --domain example.skilljar.com
+ *   npm run pull:slugs -- --dry-run
+ *   npm run pull:slugs -- --check        # CI: exit non-zero if any published.json is stale/missing
  */
 import fs from 'fs-extra';
 import path from 'path';
@@ -27,8 +27,8 @@ import dotenv from 'dotenv';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import chalk from 'chalk';
-import { createSkilljarClient, failCleanly } from './skilljar-client.mjs';
-import { readCourseDirIndex } from './course-dirs.mjs';
+import { createSkilljarClient, failCleanly } from '#lib/skilljar/client.mjs';
+import { readCourseDirIndex } from '#lib/content/course-dirs.mjs';
 
 dotenv.config();
 
@@ -52,7 +52,7 @@ if (!domains.length) {
   console.error(chalk.red('No Skilljar domains configured.'));
   console.error('Set SKILLJAR_DOMAINS in .env (comma-separated), or pass --domain:');
   console.error('  SKILLJAR_DOMAINS=courses.example.com,example.skilljar.com');
-  console.error('  node scripts/pull-slugs.mjs --domain courses.example.com');
+  console.error('  npm run pull:slugs -- --domain courses.example.com');
   process.exit(1);
 }
 

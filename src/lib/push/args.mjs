@@ -16,8 +16,8 @@
  * honoured by reading where yargs actually put it.
  */
 import yargs from 'yargs';
-import { DEFAULT_ALLOWED_BRANCHES } from './branch-guard.mjs';
-import { DEFAULT_STATE_FILE } from './push-state.mjs';
+import { DEFAULT_ALLOWED_BRANCHES } from '#lib/branch-guard.mjs';
+import { DEFAULT_STATE_FILE } from '#lib/push/state.mjs';
 
 // Requests in flight during the scan. The client backs off on 429, so this is
 // a throughput choice rather than a safety one; 6 sits below the 12 the pull

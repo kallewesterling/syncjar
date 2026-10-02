@@ -1,5 +1,5 @@
 /**
- * export-students.mjs — drop into syncjar's scripts/ directory.
+ * npm run export:students
  *
  * Exports the flat Skilljar student list to CSV. Hits /users only: no
  * per-user course or lesson calls, so it is one paginated sweep rather
@@ -17,24 +17,21 @@
  *      missing row looks like a clean result.
  *
  * Usage:
- *   node scripts/export-students.mjs
- *   node scripts/export-students.mjs --domain chainguard.dev
- *   node scripts/export-students.mjs --out ./students.csv
+ *   npm run export:students
+ *   npm run export:students -- --domain chainguard.dev
+ *   npm run export:students -- --out ./students.csv
  *
  * Read-only. Makes GET requests exclusively.
  */
 
 import fs from 'fs-extra';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import { repoRoot } from '#lib/paths.mjs';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import { parse } from 'json2csv';
 import chalk from 'chalk';
-import { createSkilljarClient, failCleanly } from './skilljar-client.mjs';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import { createSkilljarClient, failCleanly } from '#lib/skilljar/client.mjs';
 
 const argv = yargs(hideBin(process.argv))
   .option('domain', {
@@ -44,7 +41,7 @@ const argv = yargs(hideBin(process.argv))
   .option('out', {
     type: 'string',
     describe: 'Output CSV path',
-    default: path.join(__dirname, '..', 'public', 'data', 'students.csv')
+    default: path.join(repoRoot, 'public', 'data', 'students.csv')
   })
   .option('page-size', { type: 'number', default: 100 })
   .help()
