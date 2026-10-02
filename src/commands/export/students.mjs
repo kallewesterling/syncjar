@@ -18,7 +18,7 @@
  *
  * Usage:
  *   npm run export:students
- *   npm run export:students -- --domain chainguard.dev
+ *   npm run export:students -- --domain example.com
  *   npm run export:students -- --out ./students.csv
  *
  * Read-only. Makes GET requests exclusively.
