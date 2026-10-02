@@ -170,6 +170,15 @@ test('describePlan names each change', () => {
   ]);
 });
 
+test('describePlan strips tags from the excerpts it prints', () => {
+  const lines = describePlan(planQuizEdit(edited(f => {
+    f.questions[0].html = '<p>Pick <scr<b>ipt>the</b> <em>fruit</em></p>';
+  }), pulled()));
+  const line = lines.find(l => l.startsWith('question 1 html:'));
+  assert.ok(line, lines.join('\n'));
+  assert.ok(line.endsWith('→ "Pick ipt>the fruit"'), line);
+});
+
 test('fingerprintQuizFile changes with content and nothing else', () => {
   assert.equal(fingerprintQuizFile(pulled()), fingerprintQuizFile(pulled()));
   assert.notEqual(fingerprintQuizFile(pulled()), fingerprintQuizFile(edited(f => { f.name = 'x'; })));
