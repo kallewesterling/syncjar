@@ -9,7 +9,7 @@ import {
   fetchQuizQuestions,
   fetchQuestionBanks,
   fetchQuizQuestionBanks
-} from '../scripts/skilljar-fetch.mjs';
+} from '#lib/skilljar/fetch.mjs';
 
 // A stand-in for the axios client that records what it was asked for and
 // replays canned pages.

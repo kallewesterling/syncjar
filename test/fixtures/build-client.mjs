@@ -2,6 +2,6 @@
 // builds a client, which must fail when SKILLJAR_API_KEY is unset — that is
 // what keeps the "loads without credentials" test from passing vacuously
 // should the key requirement ever be dropped.
-import { createSkilljarClient } from '../../scripts/skilljar-client.mjs';
+import { createSkilljarClient } from '#lib/skilljar/client.mjs';
 
 createSkilljarClient();

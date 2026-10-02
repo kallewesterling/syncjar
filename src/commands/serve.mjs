@@ -1,18 +1,15 @@
 import http from 'http';
 import fs from 'fs-extra';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import { repoRoot } from '#lib/paths.mjs';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
 const PORT = process.env.PORT || 3000;
-const publicDir = path.join(__dirname, '..', 'public');
-const configPath = path.join(__dirname, '..', 'preview.config.json');
-const courseContentPath = process.env.COURSE_CONTENT_PATH || path.join(__dirname, '..', 'local-skilljar');
+const publicDir = path.join(repoRoot, 'public');
+const configPath = path.join(repoRoot, 'preview.config.json');
+const courseContentPath = process.env.COURSE_CONTENT_PATH || path.join(repoRoot, 'local-skilljar');
 
 const MIME = {
   '.html': 'text/html',

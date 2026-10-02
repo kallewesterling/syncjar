@@ -11,8 +11,8 @@ import {
   questionBody,
   describePlan,
   fingerprintQuizFile
-} from '../scripts/quiz-plan.mjs';
-import { validateEditedQuiz } from '../scripts/quiz-create.mjs';
+} from '#lib/push/quiz-plan.mjs';
+import { validateEditedQuiz } from '#lib/push/quiz-create.mjs';
 
 // An invented pulled quiz: three questions, in the shape buildQuizFile writes.
 function pulled() {

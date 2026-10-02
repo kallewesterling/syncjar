@@ -53,7 +53,7 @@ history as starting there.
 
 ## CRITICAL: never let a raw axios error reach the console
 
-`scripts/skilljar-client.mjs` authenticates with HTTP Basic using `SKILLJAR_API_KEY`.
+`src/lib/skilljar/client.mjs` authenticates with HTTP Basic using `SKILLJAR_API_KEY`.
 A raw axios error holds `config`, `request` and `response.headers`, and
 `config.headers.Authorization` is `Basic <base64 of the key>` — so an
 **unhandled rejection prints the key** in trivially recoverable form. Measured
@@ -74,7 +74,7 @@ There are now two layers, and both matter:
    vacuously.
 2. **Callers still catch.** Redaction stops the leak; it does not make a
    half-finished sync a good outcome. Route failures through `failCleanly()`
-   (exported from `scripts/skilljar-client.mjs`), which prints status and a
+   (exported from `src/lib/skilljar/client.mjs`), which prints status and a
    short body and exits 1.
 
 So when adding a call:
@@ -104,7 +104,7 @@ Every entry in a lesson's `content_items` names an HTML file, and every
 consumer — push, preview, the Markdown export, and content repos' own tooling —
 reads `item.file` from each one. Quiz, asset and rating content items have no
 file, so the pull records them under `non_html_items` instead
-(`scripts/lesson-meta.mjs`). Keep it that way rather than adding typed entries
+(`src/lib/content/lesson-meta.mjs`). Keep it that way rather than adding typed entries
 to `content_items`, which would break each of those readers.
 
 Push also refuses to PUT a file whose upstream item is not `HTML`, because
@@ -129,21 +129,29 @@ the PUT sends `type: 'HTML'` and would replace a quiz with a page.
 - Student exports contain real names and email addresses. Delete them when the
   task is done; they regenerate from the API in one command.
 
-## Importing a script runs it
+## Importing a command runs it
 
-Every file in `scripts/` ends in a top-level `(async () => { … })()`, so
-`import()`ing one executes it. `node -e "import('./scripts/sync-skilljar-to-local.mjs')"`
-is not a syntax check — it is a full pull, overwriting the course content tree.
-Use `node --check <file>` to check syntax, and `node --test` for behaviour.
+The directory says which kind of file you are looking at:
 
-This is also why the logic worth testing lives in modules that export
-functions and do nothing on import (`push-plan.mjs`, `push-args.mjs`,
-`push-state.mjs`, `skilljar-fetch.mjs`, `render-diff.mjs`, `course-dirs.mjs`,
-`branch-guard.mjs`, `concurrency.mjs`) rather than in the entry-point
-scripts. Put new logic there.
+- **`src/commands/`** — one file per npm script, named for it: `push:quizzes`
+  is `src/commands/push/quizzes.mjs`, and a bare `push` is
+  `src/commands/push/index.mjs`. Most end in a top-level
+  `(async () => { … })()`, so `import()`ing one executes it.
+  `node -e "import('./src/commands/pull/index.mjs')"` is not a syntax check —
+  it is a full pull, overwriting the course content tree. Use
+  `node --check <file>` to check syntax, and `node --test` for behaviour.
+- **`src/lib/`** — modules that export functions and do nothing on import.
+  The logic worth testing lives here, not in the commands. Put new logic here.
+  Import it as `#lib/<path>.mjs` (the `"imports"` map in `package.json`), from
+  commands and tests alike, so a file's depth never shows up in its imports.
 
-Where a script must be importable — `sync-users.mjs` is, for its merge logic
-— guard the entry point:
+Resolve default paths such as `public/data/` against `repoRoot` from
+`#lib/paths.mjs`, not `path.join(__dirname, '..')`, which silently points
+somewhere else as soon as a command moves to a different depth.
+
+Where a command must be importable — `sync/users.mjs` is, for its merge
+logic, and `pull/paths.mjs` for its matching and comparison helpers — guard
+the entry point:
 
 ```js
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
@@ -154,16 +162,18 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
 one makes the module unimportable on any machine without a `.env` — which
 is every CI runner. `sync-users.mjs` did exactly that, and the whole suite
 passed locally and failed on its first CI run.
-`test/import-without-credentials.test.mjs` now imports each of these modules
-in a child process with the key stripped and the cwd moved away from the
-repo, so a `.env` cannot mask it again.
+`test/import-without-credentials.test.mjs` now imports every module under
+`src/lib/`, plus the two importable commands, in a child process with the key
+stripped and the cwd moved away from the repo, so a `.env` cannot mask it
+again. It walks the directory rather than keeping a list, so a new module is
+covered the day it is added.
 
 ## Read lists, not objects
 
 Skilljar exposes courses, lessons and content items both per-object and as
 paginated lists. The per-object form reads naturally in a loop, and `push` was
 written that way: 1,537 round trips at ~380ms, about ten minutes to check 66
-courses. `scripts/skilljar-fetch.mjs` holds the list reads both sync scripts
+courses. `src/lib/skilljar/fetch.mjs` holds the list reads both sync scripts
 use — prefer them, and do not add a `GET /courses/{id}` or `GET /lessons/{id}`
 to a loop.
 
@@ -323,5 +333,5 @@ Two things to keep in mind:
 
 - The per-user cache never expires. Files are reused indefinitely, so progress
   data goes stale until you delete `public/data/user-progress/`.
-- For a straight roster, `scripts/export-students.mjs` is still the cheaper
+- For a straight roster, `npm run export:students` is still the cheaper
   path: one sweep of `/users` rather than N × (1 + courses) requests.

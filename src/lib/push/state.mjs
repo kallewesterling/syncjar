@@ -41,7 +41,7 @@
  */
 import crypto from 'crypto';
 import fs from 'fs-extra';
-import { normalizeHtml } from './push-plan.mjs';
+import { normalizeHtml } from '#lib/push/plan.mjs';
 
 // Bump when the fingerprint's inputs change, so stale entries computed under
 // the old rules are ignored rather than trusted.

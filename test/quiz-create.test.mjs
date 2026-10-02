@@ -7,8 +7,8 @@ import {
   buildQuestionRequests,
   verifyCreatedQuiz,
   createRequestCount
-} from '../scripts/quiz-create.mjs';
-import { buildQuizFile } from '../scripts/quiz-files.mjs';
+} from '#lib/push/quiz-create.mjs';
+import { buildQuizFile } from '#lib/content/quiz-files.mjs';
 
 // An invented quiz, in the shape an author would write.
 function sample(overrides = {}) {

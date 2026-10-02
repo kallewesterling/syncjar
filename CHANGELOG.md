@@ -39,11 +39,27 @@ and version scheme in `CLAUDE.md`.
   `.syncjar-quiz-state.json`.
 - `push:quizzes --file <draft> --attach <lesson_id>` attaches a newly created
   quiz to a lesson.
-- `scripts/group-audit.mjs --group <id> --roster <csv>` lists the members of
+- `npm run group:audit -- --group <id> --roster <csv>` lists the members of
   a student group who are not on a roster. It reads, and never writes to,
   Skilljar in one paginated sweep, and writes a CSV that
-  `revoke-access.mjs --in` reads directly. It warns when the roster file is
+  `group:revoke -- --in` reads directly. It warns when the roster file is
   older than `--max-age-days` (default 14).
+- npm scripts for the four commands that had none: `export:students`,
+  `check:membership`, `group:audit` and `group:revoke` (formerly
+  `revoke-access.mjs`).
+
+### Changed
+
+- `scripts/` is split into `src/commands/`, one file per npm script and named
+  for it (`push:quizzes` is `src/commands/push/quizzes.mjs`), and `src/lib/`,
+  modules that do nothing on import. Every npm script keeps its name, so
+  anything that runs Syncjar through `npm run` is unaffected; anything that
+  called `node scripts/<file>.mjs` directly needs the new path.
+- Library code is imported as `#lib/*` through `package.json` `"imports"`.
+- Default output paths resolve against the repository root through
+  `#lib/paths.mjs` instead of `__dirname/..`.
+- `test/import-without-credentials.test.mjs` covers every module under
+  `src/lib/` by walking the directory, instead of a hand-kept list.
 
 ### Fixed
 

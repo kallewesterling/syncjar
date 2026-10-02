@@ -1,15 +1,13 @@
 import fs from 'fs-extra';
 import path from 'path';
-import { fileURLToPath, pathToFileURL } from 'url';
+import { pathToFileURL } from 'url';
+import { repoRoot } from '#lib/paths.mjs';
 import dotenv from 'dotenv';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
-import { createSkilljarClient } from './skilljar-client.mjs';
+import { createSkilljarClient } from '#lib/skilljar/client.mjs';
 
 dotenv.config();
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const argv = yargs(hideBin(process.argv))
   .option('limit', { type: 'number', describe: 'Max number of users to process' })
@@ -28,7 +26,7 @@ const argv = yargs(hideBin(process.argv))
 let _client;
 const client = () => (_client ??= createSkilljarClient());
 
-const outputDir = path.join(__dirname, '..', 'public', 'data');
+const outputDir = path.join(repoRoot, 'public', 'data');
 const userListPath = path.join(outputDir, 'users.json');
 const perUserDir = path.join(outputDir, 'user-progress');
 const mergedPath = path.join(outputDir, 'user-progress.json');

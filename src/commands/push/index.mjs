@@ -15,17 +15,17 @@
  */
 import fs from 'fs-extra';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import { repoRoot } from '#lib/paths.mjs';
 import chalk from 'chalk';
 import inquirer from 'inquirer';
 import { hideBin } from 'yargs/helpers';
-import { parsePushArgs } from './push-args.mjs';
-import { listCourseDirs } from './course-dirs.mjs';
-import { mapWithConcurrency } from './concurrency.mjs';
-import { fetchCourses, fetchLessons, fetchContentItems } from './skilljar-fetch.mjs';
-import { planCourse } from './push-plan.mjs';
-import { renderDiff, renderValueChange } from './render-diff.mjs';
-import { ok, warn, skip, change, muted, heading } from './ui.mjs';
+import { parsePushArgs } from '#lib/push/args.mjs';
+import { listCourseDirs } from '#lib/content/course-dirs.mjs';
+import { mapWithConcurrency } from '#lib/concurrency.mjs';
+import { fetchCourses, fetchLessons, fetchContentItems } from '#lib/skilljar/fetch.mjs';
+import { planCourse } from '#lib/push/plan.mjs';
+import { renderDiff, renderValueChange } from '#lib/push/render-diff.mjs';
+import { ok, warn, skip, change, muted, heading } from '#lib/ui.mjs';
 import {
   DEFAULT_STATE_FILE,
   fingerprintCourse,
@@ -33,16 +33,12 @@ import {
   writeState,
   shouldSkip,
   recordCourse
-} from './push-state.mjs';
+} from '#lib/push/state.mjs';
 import {
   DEFAULT_ALLOWED_BRANCHES,
   getCurrentBranch,
   isBranchAllowed
-} from './branch-guard.mjs';
-
-// __dirname workaround for ESM
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+} from '#lib/branch-guard.mjs';
 
 // CLI args. Defined in push-args.mjs so the parsing itself can be tested —
 // see the note there about `--no-skip` and yargs' boolean negation.
@@ -50,7 +46,7 @@ const argv = parsePushArgs(hideBin(process.argv));
 
 // Load Skilljar auth
 import dotenv from 'dotenv';
-import { createSkilljarClient, failCleanly } from './skilljar-client.mjs';
+import { createSkilljarClient, failCleanly } from '#lib/skilljar/client.mjs';
 dotenv.config();
 
 // Auto-retries on 429/5xx, honouring the server's Retry-After header.
@@ -365,7 +361,7 @@ async function applyContentAction(action) {
 // ---------------------------------------------------------------------------
 
 (async () => {
-  const coursesDir = process.env.COURSE_CONTENT_PATH || path.join(__dirname, '..', 'local-skilljar');
+  const coursesDir = process.env.COURSE_CONTENT_PATH || path.join(repoRoot, 'local-skilljar');
 
   // Guard the content repo's branch, not syncjar's — the stale content that
   // would overwrite Skilljar lives in coursesDir. --dry-run and --diff-only

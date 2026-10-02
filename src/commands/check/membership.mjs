@@ -1,5 +1,5 @@
 /**
- * check-membership.mjs — drop into syncjar's scripts/
+ * npm run check:membership
  *
  * Read-only. Reports, for one or more users, whether they are currently a
  * member of a group and whether their domain-user records are active.
@@ -14,11 +14,11 @@
  * re-evaluates and must be changed before a bulk run is worth doing.
  *
  * Usage:
- *   node scripts/check-membership.mjs --group <group-id> \
+ *   npm run check:membership -- --group <group-id> \
  *     --domain <your-domain> --email someone@example.com
  *
  *   # or check everyone from a CSV
- *   node scripts/check-membership.mjs --group <group-id> \
+ *   npm run check:membership -- --group <group-id> \
  *     --in public/data/deactivate-candidates.csv
  */
 
@@ -26,7 +26,7 @@ import fs from 'fs-extra';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import chalk from 'chalk';
-import { createSkilljarClient } from './skilljar-client.mjs';
+import { createSkilljarClient } from '#lib/skilljar/client.mjs';
 
 const argv = yargs(hideBin(process.argv))
   .option('group', { type: 'array', default: [] })

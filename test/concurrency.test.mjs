@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { mapWithConcurrency } from '../scripts/concurrency.mjs';
+import { mapWithConcurrency } from '#lib/concurrency.mjs';
 
 const tick = () => new Promise(resolve => setImmediate(resolve));
 

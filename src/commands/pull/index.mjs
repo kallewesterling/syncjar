@@ -1,14 +1,14 @@
 import fs from 'fs-extra';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import { repoRoot } from '#lib/paths.mjs';
 import dotenv from 'dotenv';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import chalk from 'chalk';
-import { createSkilljarClient, failCleanly } from './skilljar-client.mjs';
-import { slugify, readCourseDirIndex, resolveCourseDirName } from './course-dirs.mjs';
-import { readLessonDirIndex, resolveLessonDirName } from './lesson-dirs.mjs';
-import { mapWithConcurrency } from './concurrency.mjs';
+import { createSkilljarClient, failCleanly } from '#lib/skilljar/client.mjs';
+import { slugify, readCourseDirIndex, resolveCourseDirName } from '#lib/content/course-dirs.mjs';
+import { readLessonDirIndex, resolveLessonDirName } from '#lib/content/lesson-dirs.mjs';
+import { mapWithConcurrency } from '#lib/concurrency.mjs';
 import {
   fetchCourses,
   fetchLessons,
@@ -17,15 +17,15 @@ import {
   fetchQuizQuestions,
   fetchQuestionBanks,
   fetchQuizQuestionBanks
-} from './skilljar-fetch.mjs';
-import { splitContentItems, buildLessonEntry } from './lesson-meta.mjs';
+} from '#lib/skilljar/fetch.mjs';
+import { splitContentItems, buildLessonEntry } from '#lib/content/lesson-meta.mjs';
 import {
   quizFileName,
   buildQuizFile,
   collectLinkedQuizIds,
   banksInUse,
   findStaleQuizFiles
-} from './quiz-files.mjs';
+} from '#lib/content/quiz-files.mjs';
 
 dotenv.config();
 
@@ -36,20 +36,16 @@ const argv = yargs(hideBin(process.argv))
   })
   .argv;
 
-// ESM __dirname workaround
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
 // Axios client for Skilljar (auto-retries on 429/5xx, honouring Retry-After)
 const client = createSkilljarClient();
 
 // Fall back on the env var itself. `path.join(undefined, x) || fallback` throws
 // inside path.join before `||` is ever read.
 const contentPath = process.env.COURSE_CONTENT_PATH
-  || path.join(__dirname, '..', 'local-skilljar');
+  || path.join(repoRoot, 'local-skilljar');
 
 const quizContentPath = process.env.QUIZ_CONTENT_PATH
-  || path.join(__dirname, '..', 'local-skilljar-quizzes');
+  || path.join(repoRoot, 'local-skilljar-quizzes');
 
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 

@@ -7,7 +7,7 @@ import {
   toMembers,
   membersNotOnRoster,
   toRevokeCsv
-} from '../scripts/group-audit-diff.mjs';
+} from '#lib/groups/audit-diff.mjs';
 
 // Invented sample data, shaped like `GET /groups/{id}/users`.
 const rows = [

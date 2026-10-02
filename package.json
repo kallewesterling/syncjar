@@ -4,19 +4,23 @@
   "main": "index.js",
   "scripts": {
     "test": "node --test test/*.test.mjs",
-    "pull": "node scripts/sync-skilljar-to-local.mjs",
-    "pull:slugs": "node scripts/pull-slugs.mjs",
-    "pull:paths": "node scripts/pull-paths.mjs",
-    "push": "node scripts/sync-local-to-skilljar.mjs",
-    "generate:courses": "node scripts/generate-courses-json.mjs",
+    "pull": "node src/commands/pull/index.mjs",
+    "pull:slugs": "node src/commands/pull/slugs.mjs",
+    "pull:paths": "node src/commands/pull/paths.mjs",
+    "push": "node src/commands/push/index.mjs",
+    "push:quizzes": "node src/commands/push/quizzes.mjs",
+    "generate:courses": "node src/commands/generate/courses.mjs",
     "build:preview": "npm run pull && npm run generate:courses",
-    "serve": "node scripts/serve.mjs",
-    "export:plaintext": "node scripts/export-courses-to-md.mjs",
-    "export:users": "node scripts/export-users-to-csv.mjs",
-    "export:metrics": "node scripts/metrics-to-csv.mjs",
-    "check:links": "node scripts/check-links.mjs",
-    "sync:users": "node scripts/sync-users.mjs",
-    "push:quizzes": "node scripts/push-quizzes.mjs"
+    "serve": "node src/commands/serve.mjs",
+    "export:plaintext": "node src/commands/export/plaintext.mjs",
+    "export:users": "node src/commands/export/users.mjs",
+    "export:metrics": "node src/commands/export/metrics.mjs",
+    "export:students": "node src/commands/export/students.mjs",
+    "check:links": "node src/commands/check/links.mjs",
+    "check:membership": "node src/commands/check/membership.mjs",
+    "sync:users": "node src/commands/sync/users.mjs",
+    "group:audit": "node src/commands/group/audit.mjs",
+    "group:revoke": "node src/commands/group/revoke.mjs"
   },
   "author": "",
   "license": "MIT",
@@ -36,5 +40,8 @@
     "node-fetch": "^3.3.2",
     "yargs": "^17.7.2"
   },
-  "type": "module"
+  "type": "module",
+  "imports": {
+    "#lib/*": "./src/lib/*"
+  }
 }

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { toDisplayLines, buildRows, renderDiff } from '../scripts/render-diff.mjs';
+import { toDisplayLines, buildRows, renderDiff } from '#lib/push/render-diff.mjs';
 
 const texts = (html) => toDisplayLines(html).map(l => l.text);
 const kinds = (rows) => rows.map(r => r.kind);

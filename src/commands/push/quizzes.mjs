@@ -20,16 +20,16 @@
  */
 import fs from 'fs-extra';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import { repoRoot } from '#lib/paths.mjs';
 import chalk from 'chalk';
 import inquirer from 'inquirer';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import dotenv from 'dotenv';
-import { createSkilljarClient, failCleanly } from './skilljar-client.mjs';
-import { fetchQuizzes, fetchQuizQuestions, fetchContentItems } from './skilljar-fetch.mjs';
-import { mapWithConcurrency } from './concurrency.mjs';
-import { isNewQuizFile, quizFileName, buildQuizFile } from './quiz-files.mjs';
+import { createSkilljarClient, failCleanly } from '#lib/skilljar/client.mjs';
+import { fetchQuizzes, fetchQuizQuestions, fetchContentItems } from '#lib/skilljar/fetch.mjs';
+import { mapWithConcurrency } from '#lib/concurrency.mjs';
+import { isNewQuizFile, quizFileName, buildQuizFile } from '#lib/content/quiz-files.mjs';
 import {
   validateNewQuiz,
   validateEditedQuiz,
@@ -37,7 +37,7 @@ import {
   buildQuestionRequests,
   verifyCreatedQuiz,
   createRequestCount
-} from './quiz-create.mjs';
+} from '#lib/push/quiz-create.mjs';
 import {
   planQuizEdit,
   hasChanges,
@@ -48,13 +48,11 @@ import {
   questionBody,
   describePlan,
   fingerprintQuizFile
-} from './quiz-plan.mjs';
-import { DEFAULT_ALLOWED_BRANCHES, getCurrentBranch, isBranchAllowed } from './branch-guard.mjs';
-import { ok, warn, skip, muted, heading } from './ui.mjs';
+} from '#lib/push/quiz-plan.mjs';
+import { DEFAULT_ALLOWED_BRANCHES, getCurrentBranch, isBranchAllowed } from '#lib/branch-guard.mjs';
+import { ok, warn, skip, muted, heading } from '#lib/ui.mjs';
 
 dotenv.config();
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const argv = yargs(hideBin(process.argv))
   .option('dry-run', { type: 'boolean', default: false, description: 'Validate and show what would change; write nothing' })
@@ -70,7 +68,7 @@ const argv = yargs(hideBin(process.argv))
   .argv;
 
 const quizContentPath = process.env.QUIZ_CONTENT_PATH
-  || path.join(__dirname, '..', 'local-skilljar-quizzes');
+  || path.join(repoRoot, 'local-skilljar-quizzes');
 
 const QUIZ_FILE = /^quiz-(.+)\.json$/;
 const READ_CONCURRENCY = 6;
