@@ -86,6 +86,15 @@ and version scheme in `CLAUDE.md`.
   from Skilljar, which is when they would be written. A failure refuses that
   quiz alone, and an unedited file that would fail is listed as a warning.
   Drafts are still all validated first, and one bad draft still stops the run.
+- An interrupted pull no longer leaves content files empty. `pull`,
+  `pull:slugs` and `pull:paths` wrote each file by truncating it and then
+  filling it, so a Ctrl+C or a cancelled CI run between the two left a 0-byte
+  file, and pushing that commit would empty the live lesson. Every pull write
+  now goes to a temp file in the same directory and is renamed into place,
+  and the next pull removes any temp files a killed run left. Separately,
+  `pull` no longer replaces a non-empty content file with empty content on
+  one read. It confirms with a single-item read, and keeps the file (exiting
+  non-zero) if Skilljar can't confirm the item is empty.
 - The preview sets the lesson title as text, not HTML, so markup in a title
   from Skilljar is shown rather than run.
 - `check-links` skips ignored hosts by their parsed hostname, not by a

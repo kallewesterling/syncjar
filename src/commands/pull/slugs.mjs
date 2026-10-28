@@ -29,6 +29,7 @@ import { hideBin } from 'yargs/helpers';
 import chalk from 'chalk';
 import { createSkilljarClient, failCleanly } from '#lib/skilljar/client.mjs';
 import { readCourseDirIndex } from '#lib/content/course-dirs.mjs';
+import { writeJsonAtomic, removeStrayTempFiles } from '#lib/content/atomic-write.mjs';
 
 dotenv.config();
 
@@ -82,6 +83,11 @@ async function fetchPublished(domain) {
 }
 
 (async () => {
+  if (!argv.check && !argv['dry-run']) {
+    const stray = await removeStrayTempFiles(contentPath);
+    if (stray.length) console.log(chalk.yellow(`! Removed ${stray.length} temp file(s) left by an interrupted pull.`));
+  }
+
   // Shared with the pull script, so both sides agree on which directory holds
   // which course id.
   const { byId, duplicates } = await readCourseDirIndex(contentPath);
@@ -136,7 +142,7 @@ async function fetchPublished(domain) {
     if (same) { unchanged++; continue; }
 
     if (argv['dry-run']) console.log(chalk.yellow(`would write ${dir}/published.json`));
-    else { await fs.writeJson(target, payload, { spaces: 2 }); written++; }
+    else { await writeJsonAtomic(target, payload); written++; }
   }
 
   for (const [cid, dir] of byId) if (!collected[cid]) unpublished.push(dir);

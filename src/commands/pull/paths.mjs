@@ -56,6 +56,7 @@ import { hideBin } from 'yargs/helpers';
 import chalk from 'chalk';
 import { createSkilljarClient, failCleanly } from '#lib/skilljar/client.mjs';
 import { slugify, readCourseDirIndex, resolveCourseDirName } from '#lib/content/course-dirs.mjs';
+import { writeJsonAtomic, removeStrayTempFiles } from '#lib/content/atomic-write.mjs';
 
 dotenv.config();
 
@@ -152,6 +153,11 @@ async function main() {
     : (process.env.SKILLJAR_DOMAINS || '').split(',').map(s => s.trim())
   ).filter(Boolean);
 
+  if (!argv.check && !argv['dry-run']) {
+    const stray = await removeStrayTempFiles(contentPath);
+    if (stray.length) console.log(chalk.yellow(`! Removed ${stray.length} temp file(s) left by an interrupted pull.`));
+  }
+
   // failCleanly() exits, so nothing below a catch block runs.
   let paths;
   try {
@@ -190,7 +196,7 @@ async function main() {
   // directory instead of growing a second one.
   //
   // No ensureDir: an absent content path reads as an empty index, and
-  // fs.outputJson() creates what it needs. So --dry-run and --check leave no
+  // writeJsonAtomic() creates what it needs. So --dry-run and --check leave no
   // directory behind on a first run.
   const index = await readCourseDirIndex(contentPath);
   for (const [id, dirs] of index.duplicates) {
@@ -268,7 +274,7 @@ async function main() {
       } else if (argv['dry-run']) {
         console.log(chalk.yellow(`would write ${dirName}/${name}`));
       } else {
-        await fs.outputJson(target, payload, { spaces: 2 });
+        await writeJsonAtomic(target, payload);
         written++;
       }
     }

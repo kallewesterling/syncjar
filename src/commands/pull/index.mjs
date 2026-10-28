@@ -19,6 +19,8 @@ import {
   fetchQuizQuestionBanks
 } from '#lib/skilljar/fetch.mjs';
 import { splitContentItems, buildLessonEntry } from '#lib/content/lesson-meta.mjs';
+import { writeFileAtomic, writeJsonAtomic, removeStrayTempFiles } from '#lib/content/atomic-write.mjs';
+import { resolveContentWrite } from '#lib/content/empty-content.mjs';
 import {
   quizFileName,
   buildQuizFile,
@@ -124,6 +126,22 @@ async function withConcurrency(items, limit, fn) {
 // Max content-item requests in flight per course at any moment.
 const LESSON_CONCURRENCY = 4;
 
+// Collected rather than printed, since the progress table redraws over
+// anything printed while it runs.
+const emptyContentWarnings = [];
+let keptContentFiles = 0;
+
+// The single-item read that confirms an empty item (see empty-content.mjs).
+// Only the status leaves this function; see CLAUDE.md.
+async function readContentItemHtml(lessonId, itemId) {
+  try {
+    const { data } = await client.get(`/lessons/${lessonId}/content-items/${itemId}`);
+    return data.content_html;
+  } catch (err) {
+    throw new Error(err.response?.status ? `HTTP ${err.response.status}` : (err.code || 'request failed'));
+  }
+}
+
 // `dirName` must come from the caller, which resolves it from the course id.
 // Deriving it from the mutable title here creates a second directory for the
 // same course every time an editor rewords or re-cases a title upstream.
@@ -137,7 +155,7 @@ async function syncCourse(course, dirName, table) {
     // Read before lessons-meta.json gets overwritten below, so an id that
     // already has a slug keeps it regardless of what the title says now.
     readLessonDirIndex(exportDir),
-    fs.outputJson(path.join(exportDir, 'details.json'), course, { spaces: 2 })
+    writeJsonAtomic(path.join(exportDir, 'details.json'), course)
   ]);
 
   const lessonMetaList = await mapWithConcurrency(lessons, LESSON_CONCURRENCY, async (lesson) => {
@@ -156,7 +174,15 @@ async function syncCourse(course, dirName, table) {
         const prefix = slugify(item.header) || 'content';
         const filename = `${prefix}-${item.id}.html`;
         const relPath = path.join('lessons', lessonSlug, filename);
-        await fs.outputFile(path.join(exportDir, relPath), item.content_html);
+        const target = path.join(exportDir, relPath);
+        const decision = await resolveContentWrite({
+          target,
+          html: item.content_html,
+          confirm: () => readContentItemHtml(lesson.id, item.id)
+        });
+        if (decision.warning) emptyContentWarnings.push(`${path.join(dirName, relPath)}: ${decision.warning}`);
+        if (decision.action === 'write') await writeFileAtomic(target, decision.html);
+        else keptContentFiles++;
         return { id: item.id, file: relPath, order: item.order };
       })
     );
@@ -185,7 +211,7 @@ async function syncCourse(course, dirName, table) {
     });
   });
 
-  await fs.outputJson(path.join(exportDir, 'lessons-meta.json'), lessonMetaList, { spaces: 2 });
+  await writeJsonAtomic(path.join(exportDir, 'lessons-meta.json'), lessonMetaList);
   lessonsByCourseDir.set(dirName, lessonMetaList);
   table.setDone(dirName, lessons.length);
 }
@@ -233,11 +259,7 @@ async function pullQuizzes({ fullPull }) {
   });
 
   for (const { quiz, questions, bankAssignments } of perQuiz) {
-    await fs.outputJson(
-      path.join(quizContentPath, quizFileName(quiz.id)),
-      buildQuizFile(quiz, questions),
-      { spaces: 2 }
-    );
+    await writeJsonAtomic(path.join(quizContentPath, quizFileName(quiz.id)), buildQuizFile(quiz, questions));
     if (bankAssignments.length) {
       warnings.push(
         `quiz ${quiz.id} ("${quiz.name}") draws from ${bankAssignments.length} question bank(s); ` +
@@ -270,6 +292,14 @@ async function pullQuizzes({ fullPull }) {
 
 // MAIN
 (async () => {
+  const stray = [
+    ...await removeStrayTempFiles(contentPath),
+    ...await removeStrayTempFiles(quizContentPath)
+  ];
+  if (stray.length) {
+    console.warn(chalk.yellow(`! Removed ${stray.length} temp file(s) left by an interrupted pull. The files they were for were not touched.`));
+  }
+
   let courses = await fetchCourses(client);
 
   // Deduplicate by id, in case the API returns a course twice across pages.
@@ -331,6 +361,15 @@ async function pullQuizzes({ fullPull }) {
   await withConcurrency(targets, 3, ({ course, dirName }) => syncCourse(course, dirName, table));
 
   process.stdout.write('\n✓ All courses synced.\n');
+
+  if (emptyContentWarnings.length) {
+    console.warn(chalk.bold.red(`\n! ${emptyContentWarnings.length} content file(s) would have been replaced by empty content:`));
+    for (const w of emptyContentWarnings) console.warn(chalk.red(`  ${w}`));
+    console.warn();
+  }
+  // A kept file means pull couldn't establish what Skilljar holds, which a
+  // person has to look at. Exiting non-zero makes CI say so.
+  if (keptContentFiles) process.exitCode = 1;
 
   await pullQuizzes({ fullPull: !argv.course });
 })().catch(err => failCleanly(err, 'Pull failed.'));

@@ -139,6 +139,28 @@ coexist.
 To rename a course directory, rename it yourself. The next pull follows the new
 name, because it matches on the id.
 
+## 🛑 Interrupting a pull
+
+It's safe to stop `pull`, `pull:slugs` or `pull:paths` partway with Ctrl+C,
+or for CI to cancel one. Every file is written to a temp file in the same
+directory and then renamed into place, so each file is either the old version
+or the new one, never partly written or empty. An interrupted pull can leave
+some files updated and others not, so run it again before committing.
+
+A run that is killed can leave temp files named
+`.<file>.syncjar-<hex>.tmp`. They are dotfiles, and they don't end in `.html`
+or `.json`, so nothing reads them as content. The next pull removes them.
+
+`pull` also won't replace a content file that has content with an empty one
+on a single read. When Skilljar's content list returns an item empty and the
+local file has content, pull reads that item again on its own:
+
+- If the second read has content, pull writes that.
+- If the second read is empty too, Skilljar really has the item empty. Pull
+  writes the empty file and warns, so check the lesson before committing.
+- If the second read fails, or has no content field, pull keeps the existing
+  file, warns, and exits non-zero.
+
 ## Quizzes
 
 `npm run pull` also writes quizzes, one file per quiz, to
