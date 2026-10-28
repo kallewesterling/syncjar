@@ -55,7 +55,7 @@ It's your local **Skilljar workspace**: Write content, test changes, see diffs, 
 ├── src/
 │   ├── commands/                    # One file per npm script; runs on import
 │   │   ├── pull/                    # pull (index.mjs), pull:slugs, pull:paths
-│   │   ├── push/                    # push (index.mjs), push:quizzes
+│   │   ├── push/                    # push (index.mjs), push:quizzes, push:course-settings
 │   │   ├── export/                  # export:plaintext, :users, :metrics, :students
 │   │   ├── check/                   # check:links, check:membership
 │   │   ├── group/                   # group:audit, group:revoke
@@ -108,6 +108,7 @@ npm run build:preview
 | `npm run pull:paths -- --path <query>` | Pull a single path (partial match on directory name or title) |
 | `npm run push` | Push local edits back to Skilljar (with diffs + prompts) |
 | `npm run push:quizzes` | Create quizzes from `quiz-new-*.json` files, and push edits to pulled `quiz-<id>.json` files |
+| `npm run push:course-settings` | Push course settings (`enforce_sequential_navigation`) from each `details.json` |
 | `npm run generate:courses` | Regenerate the local preview index |
 | `npm run build:preview` | Pull + generate (full refresh) |
 | `npm run serve` | Start the local preview server at http://localhost:3000 |
@@ -352,6 +353,37 @@ npm run push
 ```
 
 This will show diffs and prompt before updating content upstream.
+
+`push` writes course titles, lesson titles and content items. It does not read
+the settings in `details.json`, so changing one there and running `push`
+reports nothing to do. Settings have their own command.
+
+### Course settings
+
+`npm run push:course-settings` pushes course-level settings from each course's
+`details.json`. It handles one field, `enforce_sequential_navigation`, which
+is the dashboard's Details → Settings → Lesson Navigation → "Enforce
+sequential navigation". Set it to `true` or `false` in `details.json`, then:
+
+```bash
+npm run push:course-settings -- --dry-run          # each course's before and after
+npm run push:course-settings                       # same list, one prompt, then write
+npm run push:course-settings -- --course <dir|id>  # only this course (repeatable)
+```
+
+The dry run is a single `GET /courses`. A real run sends one
+`PATCH /courses/{id}` per course, holding only the changed field, so the
+title, descriptions and labels are never sent. Afterwards it reads the catalog
+again. If a value didn't land, or any other field on a written course changed
+(apart from `modified_at`), it lists the problem and exits 1.
+
+Local wins: a course switched in the dashboard but not in `details.json` shows
+up as a change back. Pull first if that might have happened. Like `push`, it
+only writes from a content repo on `dev` or `main` (`--allow-branch` to
+override), and `--force` skips the prompt.
+
+Writing a setting bumps the course's `modified_at`, so the next `push` scans
+those courses once instead of skipping them.
 
 ## 🛠️ Example Workflows
 
