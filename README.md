@@ -108,7 +108,7 @@ npm run build:preview
 | `npm run pull:paths -- --path <query>` | Pull a single path (partial match on directory name or title) |
 | `npm run push` | Push local edits back to Skilljar (with diffs + prompts) |
 | `npm run push:quizzes` | Create quizzes from `quiz-new-*.json` files, and push edits to pulled `quiz-<id>.json` files |
-| `npm run push:course-settings` | Push course settings (`enforce_sequential_navigation`) from each `details.json` |
+| `npm run push:course-settings` | Push course settings (sequential navigation, course-time display, labels) from each `details.json` |
 | `npm run generate:courses` | Regenerate the local preview index |
 | `npm run build:preview` | Pull + generate (full refresh) |
 | `npm run serve` | Start the local preview server at http://localhost:3000 |
@@ -361,9 +361,16 @@ reports nothing to do. Settings have their own command.
 ### Course settings
 
 `npm run push:course-settings` pushes course-level settings from each course's
-`details.json`. It handles one field, `enforce_sequential_navigation`, which
-is the dashboard's Details → Settings → Lesson Navigation → "Enforce
-sequential navigation". Set it to `true` or `false` in `details.json`, then:
+`details.json`. It handles these fields:
+
+| Field | Value |
+|---|---|
+| `enforce_sequential_navigation` | `true`/`false`. Details → Settings → Lesson Navigation → "Enforce sequential navigation" |
+| `display_course_and_lesson_time` | `true`/`false`. Show course and lesson times |
+| `display_manual_course_time` | `true`/`false`. Show the manual course time instead |
+| `labels` | A list of label names, which must already exist in Skilljar. Order doesn't matter |
+
+Edit them in `details.json`, then:
 
 ```bash
 npm run push:course-settings -- --dry-run          # each course's before and after
@@ -371,11 +378,20 @@ npm run push:course-settings                       # same list, one prompt, then
 npm run push:course-settings -- --course <dir|id>  # only this course (repeatable)
 ```
 
-The dry run is a single `GET /courses`. A real run sends one
-`PATCH /courses/{id}` per course, holding only the changed field, so the
-title, descriptions and labels are never sent. Afterwards it reads the catalog
-again. If a value didn't land, or any other field on a written course changed
-(apart from `modified_at`), it lists the problem and exits 1.
+The dry run is a single `GET /courses`, plus `GET /labels` when a course
+names a label. A label that Skilljar doesn't have is refused with a warning
+rather than sent. A real run sends one `PATCH /courses/{id}` per course,
+holding only the changed fields, so the title and descriptions are never sent.
+Afterwards it reads the catalog again. If a value didn't land, or any other
+field on a written course changed, it lists the problem and exits 1. The
+exceptions are `modified_at`, and `course_time` when a display flag was
+written, since Skilljar recomputes both.
+
+Other course settings stay out on purpose. The short description, the manual
+course time text and the time format can be set through the API but never
+cleared again, and per-domain settings such as hidden or registration aren't
+in `details.json`. See `CLAUDE.md` ("Course settings writes") for what was
+tested.
 
 Local wins: a course switched in the dashboard but not in `details.json` shows
 up as a change back. Pull first if that might have happened. Like `push`, it

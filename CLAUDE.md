@@ -251,14 +251,46 @@ staging domain, then set back.
   a settings change by PUT would also rewrite the title and description.
 - **The write bumps `modified_at`.** So a course whose setting is pushed is
   rescanned once by the next `push`, which is the safe direction.
+- **Skilljar trims strings.** `" x"` is stored as `"x"`, so a read-back
+  comparison of a string field must trim.
 
-`push:course-settings` writes only the fields in `COURSE_SETTING_FIELDS`
-(`src/lib/push/course-settings.mjs`) and reads every written course back.
-Before adding a field to that list, check it is in `PatchedCourseRequest` in
-the spec, and test it the same way: set it on a throwaway course, read it back,
-diff the whole record, set it back. `push` does not touch these settings, and
-its skip-state fingerprint does not hash them, so adding them there would force
-a full rescan of every course once.
+Every other field in `PatchedCourseRequest`, and every field in
+`PatchedPublishedCourseRequest`, was then tested the same way: set, read both
+records back, restore, read again.
+
+| Field | Result |
+|---|---|
+| Course: `display_course_and_lesson_time`, `display_manual_course_time` | Round-trip cleanly. They also recompute the read-only `course_time`: with the manual flag on it reads `manual_course_time`. |
+| Course: `labels` | Round-trips cleanly with an existing label; no label was created. **What an unknown label name does is untested** — it may create an organisation-wide label. |
+| Course: `title`, `long_description_html` | Round-trip cleanly. The published record's embedded copy of the course follows. |
+| Course: `short_description`, `manual_course_time` | **Can be set, cannot be cleared:** `""` is a 400, "may not be blank". |
+| Course: `course_and_lesson_time_format` | **Can be set, cannot be cleared:** `null` is a 400, "may not be null". |
+| Published: `hidden`, `strict_enforce_group_visibility`, `registration_required`, `restrict_access_start_end_dates`, `allow_self_service_reenroll`, `unique_progress_per_enrollment`, `require_all_prerequisites` | Round-trip cleanly. |
+| Published: `slug` | Round-trips cleanly; `course_url` follows. |
+| Published: `registration_starts_at`, `registration_ends_at` | **Can be set, cannot be cleared:** `null` and `""` are both a 400. A future start date also closed registration (`offer.registration_open` went false). |
+
+Two dead ends for clearing those fields: `PUT /courses/{id}` that omits them
+leaves them as they were rather than resetting them, and
+`PUT /domains/{d}/published-courses/{id}` is a 400 on the course's own
+unchanged slug ("A published course with this slug already exists"), so PUT
+is unusable there. Clearing them takes the dashboard.
+
+`push:course-settings` writes only the fields in `COURSE_SETTINGS`
+(`src/lib/push/course-settings.mjs`): `enforce_sequential_navigation`, the two
+course-time display flags, and `labels`. It refuses labels that `GET /labels`
+does not list, rather than find out what an unknown one does. It reads every
+written course back, and allows `course_time` to move only when a display flag
+was written.
+
+Keep fields that cannot be cleared out of that list. A push of one is a change
+nobody can undo through the API, and the published-course fields are per
+domain and are not in `details.json` at all.
+
+Before adding a field, check it is in `PatchedCourseRequest` in the spec, and
+test it the same way: set it on a throwaway course, read it back, diff the
+whole record, set it back. `push` does not touch these settings, and its
+skip-state fingerprint does not hash them, so adding them there would force a
+full rescan of every course once.
 
 ## Quiz writes: what the API does, as opposed to what the spec says
 
