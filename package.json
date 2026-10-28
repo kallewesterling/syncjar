@@ -8,6 +8,7 @@
     "pull:paths": "node src/commands/pull/paths.mjs",
     "push": "node src/commands/push/index.mjs",
     "push:quizzes": "node src/commands/push/quizzes.mjs",
+    "push:course-settings": "node src/commands/push/course-settings.mjs",
     "generate:courses": "node src/commands/generate/courses.mjs",
     "build:preview": "npm run pull && npm run generate:courses",
     "serve": "node src/commands/serve.mjs",

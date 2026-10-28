@@ -16,6 +16,14 @@ and version scheme in `CLAUDE.md`.
 
 ### Added
 
+- `npm run push:course-settings` pushes course-level settings from each
+  course's `details.json`. Today that is only `enforce_sequential_navigation`
+  ("Enforce sequential navigation" in the dashboard). A dry run is one request
+  and shows each course's before and after. A real run asks once, sends a
+  `PATCH /courses/{id}` per course holding only the changed field, then reads
+  the catalog back and fails if the value did not land or any other field on
+  that course changed. `push` still does not compare or write `details.json`
+  settings.
 - `pull` keeps lesson metadata it used to fetch and discard (`type`,
   `optional`, `time_seconds`, `search_keywords`, `tooltip_html`,
   `display_fullscreen` and the `content_*_id` references), and records quiz,

@@ -234,6 +234,32 @@ never written to** — the worst a wrong skip does is not report drift, and
 decides to *write*, or to *not pull*, loses that property and needs the
 experiment run first.
 
+## Course settings writes
+
+Established on 2026-10-28 against a throwaway course published only on the
+staging domain, then set back.
+
+- **`PATCH /courses/{id}` is a true partial update.** A body of only
+  `{ "enforce_sequential_navigation": true }` returned 200, and both the
+  response and a separate read changed that field and `modified_at` and
+  nothing else: title, descriptions, labels and the course-time fields were
+  untouched. Setting it back restored the record, apart from `modified_at`.
+- **Published state is not on the course object.** It lives on
+  `/domains/{domain}/published-courses`, and those records did not change.
+- **Do not use `PUT /courses/{id}`.** The spec makes `title`,
+  `short_description` and `enforce_sequential_navigation` required for it, so
+  a settings change by PUT would also rewrite the title and description.
+- **The write bumps `modified_at`.** So a course whose setting is pushed is
+  rescanned once by the next `push`, which is the safe direction.
+
+`push:course-settings` writes only the fields in `COURSE_SETTING_FIELDS`
+(`src/lib/push/course-settings.mjs`) and reads every written course back.
+Before adding a field to that list, check it is in `PatchedCourseRequest` in
+the spec, and test it the same way: set it on a throwaway course, read it back,
+diff the whole record, set it back. `push` does not touch these settings, and
+its skip-state fingerprint does not hash them, so adding them there would force
+a full rescan of every course once.
+
 ## Quiz writes: what the API does, as opposed to what the spec says
 
 Established on 2026-09-28 against throwaway quizzes that were never attached
