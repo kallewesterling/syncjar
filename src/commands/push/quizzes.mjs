@@ -15,6 +15,11 @@
  *   are shown as such, are all-or-nothing per quiz, and need an interactive
  *   yes or `--recreate <quiz_id>`. `--force` never covers them.
  *
+ * Every draft is validated before anything is written, and one bad draft
+ * stops the run. A pulled file is validated only if it differs from Skilljar,
+ * since only then is it written. A failure refuses that quiz alone, and a
+ * pulled file that matches Skilljar is at most a warning (see quiz-select.mjs).
+ *
  * Every write is read back. A 200 from Skilljar's quiz API does not prove the
  * write happened (see CLAUDE.md, "Quiz writes").
  */
@@ -31,16 +36,14 @@ import { fetchQuizzes, fetchQuizQuestions, fetchContentItems } from '#lib/skillj
 import { mapWithConcurrency } from '#lib/concurrency.mjs';
 import { isNewQuizFile, quizFileName, buildQuizFile } from '#lib/content/quiz-files.mjs';
 import {
-  validateNewQuiz,
-  validateEditedQuiz,
   buildQuizRequest,
   buildQuestionRequests,
   verifyCreatedQuiz,
   createRequestCount
 } from '#lib/push/quiz-create.mjs';
+import { selectQuizFileNames, sortQuizFiles, triageScannedQuizzes } from '#lib/push/quiz-select.mjs';
 import {
   planQuizEdit,
-  hasChanges,
   isDestructive,
   editRequestCount,
   quizPatchBody,
@@ -70,7 +73,6 @@ const argv = yargs(hideBin(process.argv))
 const quizContentPath = process.env.QUIZ_CONTENT_PATH
   || path.join(repoRoot, 'local-skilljar-quizzes');
 
-const QUIZ_FILE = /^quiz-(.+)\.json$/;
 const READ_CONCURRENCY = 6;
 let requests = 0;
 
@@ -106,6 +108,24 @@ async function readState(file) {
 
 function record(state, id, file) {
   state.quizzes[id] = { fingerprint: fingerprintQuizFile(file), verifiedAt: new Date().toISOString() };
+}
+
+function printRefusal({ name, problems, edited }) {
+  console.error(chalk.red(edited
+    ? `✗ ${name} differs from Skilljar, so pushing it would edit the quiz, but it fails the checks:`
+    : `✗ ${name}:`));
+  for (const p of problems) console.error(chalk.red(`    ${p}`));
+  if (edited) {
+    console.error(muted('    Fix it, or restore the pulled file to leave the quiz alone. Other quizzes are not affected.'));
+  }
+}
+
+// Files that match Skilljar are never written, so these only say the file
+// would need fixing before an edit to it could be pushed.
+function printUnchangedWarnings(list) {
+  if (!list.length) return;
+  console.log(warn(`${list.length} pulled quiz file(s) match Skilljar but would fail the checks if edited. Nothing is written to them:`));
+  for (const { name, problems } of list) console.log(muted(`    ${name}: ${problems.join('; ')}`));
 }
 
 async function confirm(message) {
@@ -254,8 +274,7 @@ async function applyEdit(client, local, plan) {
 (async () => {
   let names = [];
   try { names = await fs.readdir(quizContentPath); } catch { /* no directory */ }
-  names = names.filter(n => QUIZ_FILE.test(n)).sort();
-  if (argv.file) names = names.filter(n => n === path.basename(argv.file));
+  names = selectQuizFileNames(names, argv.file);
 
   if (names.length === 0) {
     console.log(chalk.yellow(argv.file
@@ -270,46 +289,35 @@ async function applyEdit(client, local, plan) {
     return;
   }
 
-  // Validate everything before writing anything.
-  const drafts = [];
-  const edits = [];
-  let invalid = 0;
+  // Every draft is written, so every draft is checked before anything is.
+  // Pulled files are checked later, and only if they would be written (see
+  // quiz-select.mjs).
+  const entries = [];
   for (const name of names) {
-    let file;
     try {
-      file = await fs.readJson(path.join(quizContentPath, name));
+      entries.push({ name, file: await fs.readJson(path.join(quizContentPath, name)) });
     } catch (err) {
-      console.error(chalk.red(`✗ ${name}: not valid JSON (${err.message})`));
-      invalid++;
-      continue;
+      entries.push({ name, readError: `not valid JSON (${err.message})` });
     }
-    const isDraft = isNewQuizFile(name);
-    const errors = isDraft ? validateNewQuiz(file) : validateEditedQuiz(file);
-    if (!isDraft && file.id && name !== quizFileName(file.id)) {
-      errors.push(`holds quiz ${file.id}, but is named ${name}; expected ${quizFileName(file.id)}`);
-    }
-    if (errors.length) {
-      console.error(chalk.red(`✗ ${name}:`));
-      for (const e of errors) console.error(chalk.red(`    ${e}`));
-      invalid++;
-      continue;
-    }
-    (isDraft ? drafts : edits).push({ name, file });
   }
-  if (invalid) {
-    console.error(chalk.red(`\n${invalid} file(s) need fixing. Nothing was written.`));
+  const { drafts, invalidDrafts, pulled, unreadable } = sortQuizFiles(entries);
+  if (invalidDrafts.length) {
+    for (const entry of invalidDrafts) printRefusal(entry);
+    console.error(chalk.red(`\n${invalidDrafts.length} new quiz file(s) need fixing. Nothing was written.`));
     process.exitCode = 1;
     return;
   }
+  for (const entry of unreadable) printRefusal(entry);
 
   // Skip quiz files unchanged since the last verified push or scan. Skipping
   // never writes, so a wrong skip can only miss drift, which pull reports.
   const stateFile = argv['state-file'];
   const state = await readState(stateFile);
-  const toScan = argv['full-scan']
-    ? edits
-    : edits.filter(({ file }) => state.quizzes[file.id]?.fingerprint !== fingerprintQuizFile(file));
-  const skipped = edits.length - toScan.length;
+  const isRecorded = ({ file }) => state.quizzes[file.id]?.fingerprint === fingerprintQuizFile(file);
+  const toScan = argv['full-scan'] ? pulled : pulled.filter(e => !isRecorded(e));
+  const skippedEntries = argv['full-scan'] ? [] : pulled.filter(isRecorded);
+  const skipped = skippedEntries.length;
+  const skippedWarnings = skippedEntries.filter(e => e.problems.length);
 
   if (!argv['dry-run']) {
     const allowed = [...DEFAULT_ALLOWED_BRANCHES, ...argv['allow-branch']];
@@ -326,7 +334,9 @@ async function applyEdit(client, local, plan) {
   }
 
   if (drafts.length === 0 && toScan.length === 0) {
+    printUnchangedWarnings(skippedWarnings);
     console.log(ok(`Nothing to push — ${skipped} quiz file(s) unchanged since the last verified push (--full-scan to compare anyway).`));
+    if (unreadable.length) process.exitCode = 1;
     return;
   }
 
@@ -380,20 +390,9 @@ async function applyEdit(client, local, plan) {
     }
   );
 
-  let blocked = missing.length;
-  const inSync = [];
-  const changed = [];
-  for (const entry of scanned) {
-    if (entry.plan.problems.length) {
-      console.error(chalk.red(`✗ ${entry.name}:`));
-      for (const p of entry.plan.problems) console.error(chalk.red(`    ${p}`));
-      blocked++;
-    } else if (hasChanges(entry.plan)) {
-      changed.push(entry);
-    } else {
-      inSync.push(entry);
-    }
-  }
+  const { changed, inSync, refused, warnings } = triageScannedQuizzes(scanned);
+  for (const entry of refused) printRefusal(entry);
+  const blocked = missing.length + unreadable.length + refused.length;
 
   // Proven in sync by comparison, whatever mode this is: the state records an
   // observation, not a write.
@@ -402,6 +401,7 @@ async function applyEdit(client, local, plan) {
   console.log(heading('\nQuizzes:'));
   if (skipped) console.log(muted(`  ${skipped} unchanged since the last verified push — skipped without a request`));
   if (inSync.length) console.log(muted(`  ${inSync.length} compared and already in sync`));
+  printUnchangedWarnings([...skippedWarnings, ...warnings].sort((a, b) => a.name.localeCompare(b.name)));
   for (const { name, file } of drafts) {
     const attach = argv.attach ? `, then attach to lesson ${argv.attach}` : '';
     console.log(`  create "${file.name}" ${muted(`— ${file.questions.length} question(s), ${createRequestCount(file)} requests${attach} (${name})`)}`);

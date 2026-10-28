@@ -183,6 +183,34 @@ ours), so content costs one request per lesson no matter what; and lessons and
 content items carry no timestamps at all, so `modified_at` on a course is the
 only freshness signal the API offers.
 
+## Pulls write atomically — never truncate a content file in place
+
+`fs.writeFile`, and fs-extra's `outputFile`, `outputJson` and `writeJson`,
+open the target with `O_TRUNC` and then write. Every pull used them. On
+2026-10-28 a Ctrl+C during `pull` left two lesson files at 0 bytes. Git shows
+that as an ordinary edit deleting every line, and a `push` of that commit
+empties the live lesson. A cancelled nightly CI sync can do the same.
+
+So every file a pull writes (`pull`, `pull:slugs`, `pull:paths`, quizzes
+included) goes through `writeFileAtomic` / `writeJsonAtomic` in
+`src/lib/content/atomic-write.mjs`. Each one writes a temp file in the same
+directory, flushes it, and renames it over the target. Temp files are named
+`.<name>.syncjar-<12 hex>.tmp`, so they are dotfiles that no `.html`/`.json`
+reader matches. Each pull removes any left by a killed run before it starts.
+`writeJsonAtomic` output is byte-identical to `outputJson(…, { spaces: 2 })`,
+so switching caused no churn. A pull into a copy of the courses repo diffed
+clean. When adding a pull-side write, use these helpers rather than fs-extra.
+
+As a second guard, `src/lib/content/empty-content.mjs` stops pull replacing a
+non-empty content file with an empty one on one read. Pull's content comes
+from the content-items list with `include_content`, which the spec doesn't
+document, and `GET /lessons` has already shown that a list's `content_html`
+can be empty when the content isn't. So an empty value over a non-empty file
+is confirmed with the documented `GET /lessons/{id}/content-items/{id}`. If
+that read has content, pull writes it. If it returns `''`, the item really is
+empty, and pull writes the empty file with a warning. If it fails, or returns
+no field, pull keeps the file, warns, and exits 1.
+
 ## `modified_at` is not proven to track content edits — keep it non-load-bearing
 
 `push` skips courses recorded as in sync (`push-state.mjs`), keyed on a local
@@ -249,6 +277,31 @@ to a lesson, then deleted. The spec is wrong or silent on most of this.
   links, then `DELETE /quizzes/{id}` for each quiz nothing else uses. Both
   return 204, then 404 on read. Pull won't see the orphaned lessons, because it
   starts from the course list.
+
+### Validate what a run would write, not every file it can see
+
+Skilljar holds quizzes that `push:quizzes`' own rules reject: empty
+descriptions, `LINEAR_SCALE` questions on feedback forms, `MULTIPLE_ANSWER`
+survey questions with no correct answer, empty "Untitled Quiz" shells. A pull
+writes them faithfully. From #25 until the fix, every pulled file was
+validated before anything was compared, so 26 such files, none edited, made
+every run without `--file` fail with "Nothing was written".
+
+So `src/lib/push/quiz-select.mjs` ties validation to writes:
+
+- **Drafts** (`quiz-new-*.json`) are always written, so all of them are
+  validated first, and one bad draft stops the run.
+- **Pulled files** are validated after they are planned against a fresh read,
+  the read push makes anyway, and only matter if the plan has changes. A
+  failure refuses that quiz alone. A file with no changes is never written,
+  so its problems are only a warning. A file skipped through
+  `.syncjar-quiz-state.json` was proven in sync when it was recorded, and is
+  treated the same way.
+
+Don't move pulled-file validation back ahead of the comparison, and don't
+relax the rules for drafts so that pulled files pass. Unsupported types such
+as `LINEAR_SCALE` stay unsupported for writes, because what a POST or PATCH
+does with them has not been established.
 
 ### What an edit does to learners who already took the quiz
 

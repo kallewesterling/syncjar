@@ -122,7 +122,8 @@ function validateQuestion(question, { existing }) {
     if (key !== 'id' && key !== 'answers' && !QUESTION_KEYS.has(key)) errors.push(`unknown field "${key}"`);
   }
   if (!QUESTION_TYPES.includes(question.type)) {
-    errors.push(`"type" must be one of ${QUESTION_TYPES.join(', ')}`);
+    const got = question.type === undefined ? 'missing' : JSON.stringify(question.type);
+    errors.push(`"type" must be one of ${QUESTION_TYPES.join(', ')}, and is ${got}`);
   }
   if (isBlank(question.html)) errors.push('"html" is required');
   for (const field of BOOLEAN_QUESTION_FIELDS) {
