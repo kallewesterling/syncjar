@@ -136,6 +136,14 @@ export function fetchGroupMembers(client, groupId) {
   );
 }
 
+/**
+ * Every label defined in the organisation. A course's `labels` holds their
+ * names.
+ */
+export function fetchLabels(client) {
+  return fetchAllPages(client, '/labels', {}, 'Could not list labels');
+}
+
 export function fetchQuestionBanks(client) {
   return fetchAllPages(client, '/question-banks', {}, 'Could not list question banks');
 }

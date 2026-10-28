@@ -1,13 +1,14 @@
 /**
  * push-course-settings.mjs — push course-level settings from details.json.
  *
- * Only the fields in COURSE_SETTING_FIELDS (course-settings.mjs) are compared
- * or written; today that is `enforce_sequential_navigation`. Titles and
- * content belong to `push`, and descriptions and labels are not written by
- * anything.
+ * Only the fields in COURSE_SETTINGS (course-settings.mjs) are compared or
+ * written: `enforce_sequential_navigation`, the two course-time display
+ * flags, and `labels`. Titles and content belong to `push`, and descriptions
+ * are not written by anything.
  *
- * One `GET /courses` reads every course's current settings, so a dry run is
- * a single request. A real run shows the same list, asks once, sends one
+ * One `GET /courses` reads every course's current settings, plus one
+ * `GET /labels` when some local course names a label, so a dry run is one or
+ * two requests. A real run shows the same list, asks once, sends one
  * `PATCH /courses/{id}` per course with only the changed fields, then reads
  * the catalog again and fails if any intended value did not land or any
  * other field on a written course moved.
@@ -21,7 +22,7 @@ import { hideBin } from 'yargs/helpers';
 import dotenv from 'dotenv';
 import { repoRoot } from '#lib/paths.mjs';
 import { createSkilljarClient, failCleanly } from '#lib/skilljar/client.mjs';
-import { fetchCourses } from '#lib/skilljar/fetch.mjs';
+import { fetchCourses, fetchLabels } from '#lib/skilljar/fetch.mjs';
 import { listCourseDirs } from '#lib/content/course-dirs.mjs';
 import { planCourseSettings, patchBodies, verifyCourseSettings } from '#lib/push/course-settings.mjs';
 import { DEFAULT_ALLOWED_BRANCHES, getCurrentBranch, isBranchAllowed } from '#lib/branch-guard.mjs';
@@ -85,7 +86,9 @@ async function readLocals() {
   const client = createSkilljarClient();
   const before = await fetchCourses(client);
   const beforeById = new Map(before.map(c => [c.id, c]));
-  const { changes, inSync, warnings } = planCourseSettings({ locals, upstreamById: beforeById });
+  const namesLabels = locals.some(l => Array.isArray(l.details.labels) && l.details.labels.length);
+  const knownLabels = new Set(namesLabels ? (await fetchLabels(client)).map(l => l.name) : []);
+  const { changes, inSync, warnings } = planCourseSettings({ locals, upstreamById: beforeById, knownLabels });
 
   for (const w of warnings) console.warn(warn(w));
   console.log(muted(`\n${locals.length} course(s) compared: ${inSync} setting(s) in sync, ${changes.length} to change\n`));

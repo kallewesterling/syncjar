@@ -24,6 +24,11 @@ and version scheme in `CLAUDE.md`.
   the catalog back and fails if the value did not land or any other field on
   that course changed. `push` still does not compare or write `details.json`
   settings.
+- `push:course-settings` also pushes `display_course_and_lesson_time`,
+  `display_manual_course_time` and `labels`. Labels compare without regard to
+  order, and a label that `GET /labels` doesn't list is refused. Fields the
+  API can set but never clear (`short_description`, `manual_course_time`,
+  `course_and_lesson_time_format`) stay out.
 - `pull` keeps lesson metadata it used to fetch and discard (`type`,
   `optional`, `time_seconds`, `search_keywords`, `tooltip_html`,
   `display_fullscreen` and the `content_*_id` references), and records quiz,
