@@ -250,6 +250,31 @@ to a lesson, then deleted. The spec is wrong or silent on most of this.
   return 204, then 404 on read. Pull won't see the orphaned lessons, because it
   starts from the course list.
 
+### Validate what a run would write, not every file it can see
+
+Skilljar holds quizzes that `push:quizzes`' own rules reject: empty
+descriptions, `LINEAR_SCALE` questions on feedback forms, `MULTIPLE_ANSWER`
+survey questions with no correct answer, empty "Untitled Quiz" shells. A pull
+writes them faithfully. From #25 until the fix, every pulled file was
+validated before anything was compared, so 26 such files, none edited, made
+every run without `--file` fail with "Nothing was written".
+
+So `src/lib/push/quiz-select.mjs` ties validation to writes:
+
+- **Drafts** (`quiz-new-*.json`) are always written, so all of them are
+  validated first, and one bad draft stops the run.
+- **Pulled files** are validated after they are planned against a fresh read,
+  the read push makes anyway, and only matter if the plan has changes. A
+  failure refuses that quiz alone. A file with no changes is never written,
+  so its problems are only a warning. A file skipped through
+  `.syncjar-quiz-state.json` was proven in sync when it was recorded, and is
+  treated the same way.
+
+Don't move pulled-file validation back ahead of the comparison, and don't
+relax the rules for drafts so that pulled files pass. Unsupported types such
+as `LINEAR_SCALE` stay unsupported for writes, because what a POST or PATCH
+does with them has not been established.
+
 ### What an edit does to learners who already took the quiz
 
 Established on 2026-09-29 against a test course with one test learner, who

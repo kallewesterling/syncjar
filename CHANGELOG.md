@@ -77,6 +77,15 @@ and version scheme in `CLAUDE.md`.
   `type: 'HTML'` and would have replaced a quiz, asset or rating with a page.
 - The `push:quizzes` plan summary strips tags from its excerpts until none
   are left, rather than in one pass that could splice a new tag together.
+- `push:quizzes` without `--file` no longer refuses to run because of pulled
+  quizzes nobody edited. Since quiz editing landed, every pulled
+  `quiz-<id>.json` had been held to the rules for a new quiz before anything
+  was compared, and Skilljar holds quizzes that break them (empty
+  descriptions, `LINEAR_SCALE` questions, survey questions with no correct
+  answer, empty shells). Pulled files are now validated only when they differ
+  from Skilljar, which is when they would be written. A failure refuses that
+  quiz alone, and an unedited file that would fail is listed as a warning.
+  Drafts are still all validated first, and one bad draft still stops the run.
 - The preview sets the lesson title as text, not HTML, so markup in a title
   from Skilljar is shown rather than run.
 - `check-links` skips ignored hosts by their parsed hostname, not by a

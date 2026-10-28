@@ -208,7 +208,8 @@ npm run push:quizzes -- --dry-run   # validate, and show what would be created
 npm run push:quizzes                # create, asking about each quiz
 ```
 
-Each file is checked before anything is created. Unknown fields are errors,
+Every new quiz file is checked before anything is created, and one that fails
+stops the run. Unknown fields are errors,
 because Skilljar silently ignores fields it doesn't recognise, so a typo would
 otherwise lose a setting without telling you. Each quiz is read back after
 it's created and compared with the file. If anything differs, or a request
@@ -260,6 +261,16 @@ A quiz file that hasn't changed since its last verified push is skipped
 without a request. `--full-scan` compares everything. The record is kept in
 `.syncjar-quiz-state.json`, and a missing or deleted state file only means a
 slower run.
+
+A pulled file is held to the same checks as a new quiz, but only when it
+differs from Skilljar, because only then is anything written. Skilljar has
+quizzes these checks reject: feedback forms with `LINEAR_SCALE` questions,
+survey questions with no correct answer, quizzes with no description, and
+empty "Untitled Quiz" shells. Left as pulled, they are listed as warnings and
+never block a push. Once edited, a quiz that fails the checks is refused on
+its own, and the rest of the run goes ahead. So a quiz with a `LINEAR_SCALE`
+question can't be pushed from here, even if the edit is to another question.
+Edit it in Skilljar.
 
 See `CLAUDE.md` ("Quiz writes") for what the Skilljar API does and doesn't
 allow.
