@@ -323,8 +323,8 @@ Left out on purpose:
 - **Lesson `time_seconds`, `search_keywords`, `display_fullscreen`.** No
   lesson uses them.
 - **The uniform published-course settings** (`registration_required` and the
-  rest). They are the same on every course, so nobody needs to edit them
-  from git.
+  rest). They are the same on every course, so `check:settings` reports the
+  odd one out instead of anyone editing them from git.
 
 Before adding a field, check it is in the matching `Patched…Request` schema in
 the spec, and test it the same way: set it on a throwaway object, read it
@@ -332,6 +332,11 @@ back, diff the whole record and every record that embeds it, set it back.
 `push` does not touch these settings, and its skip-state fingerprint does not
 hash them, so adding them there would force a full rescan of every course
 once.
+
+`check:settings` is read-only. It works out the norm from the catalog, rather
+than hardcoding one organisation's values: when one value covers at least 90%
+of records (`--threshold`), every record with another value is listed. Truly
+split settings such as `hidden` are reported as varying.
 
 ## Quiz writes: what the API does, as opposed to what the spec says
 

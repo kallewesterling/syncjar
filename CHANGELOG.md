@@ -38,6 +38,9 @@ and version scheme in `CLAUDE.md`.
   `strict_enforce_group_visibility` for courses and paths from
   `published.json`. It warns before the prompt when a run would hide a path's
   last visible course, which closes registration on the path.
+- `npm run check:settings` (read-only) lists courses and paths whose settings
+  differ from what at least 90% of the catalog uses. The norm comes from the
+  data, so nothing organisation-specific is hardcoded.
 - All the settings pushes share one planner and one run: compare an allowlist,
   show every change, prompt once, stop at the first failed write, then read
   back and fail if a value didn't land or anything else moved.
