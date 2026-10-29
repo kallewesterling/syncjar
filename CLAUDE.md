@@ -270,11 +270,27 @@ records back, restore, read again.
 | Published: `slug` | Round-trips cleanly; `course_url` follows. |
 | Published: `registration_starts_at`, `registration_ends_at` | **Can be set, cannot be cleared:** `null` and `""` are both a 400. A future start date also closed registration (`offer.registration_open` went false). |
 
-Two dead ends for clearing those fields: `PUT /courses/{id}` that omits them
-leaves them as they were rather than resetting them, and
-`PUT /domains/{d}/published-courses/{id}` is a 400 on the course's own
-unchanged slug ("A published course with this slug already exists"), so PUT
-is unusable there. Clearing them takes the dashboard.
+There is no API route to clearing those fields. Tried on 2026-10-29, every
+one against the throwaway course and read back:
+
+- `" "` is a 400 like `""`, because the trim happens before the blank
+  check. `""` for `course_and_lesson_time_format` is a 400, "not a valid
+  choice".
+- The same PATCH sent form-encoded or multipart with empty values returns
+  200 and changes nothing: the empty field is dropped, not applied. A 200
+  here proves nothing.
+- `PUT /courses/{id}` that omits the fields leaves them as they were.
+- `PUT /domains/{d}/published-courses/{id}` is a 400 on the course's own
+  unchanged slug ("A published course with this slug already exists"). A
+  PUT that changes the slug gets past that, but is a 400 on `null` dates
+  and keeps the dates when they are omitted.
+
+Clearing them takes the dashboard. For registration dates, a workaround
+does the job: a window of `2000-01-01T00:00:00Z` to `2099-12-31T23:59:59Z`
+set `offer.registration_open` back to true, though the dates stay on the
+record. Unpublishing and republishing would reset them, but the spec calls
+the unpublish irreversible (new published-course id, enrollments lost), and
+it is untested.
 
 Paths, published paths and lessons, tested the same way:
 
