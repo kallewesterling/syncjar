@@ -109,7 +109,9 @@ npm run build:preview
 | `npm run push` | Push local edits back to Skilljar (with diffs + prompts) |
 | `npm run push:quizzes` | Create quizzes from `quiz-new-*.json` files, and push edits to pulled `quiz-<id>.json` files |
 | `npm run push:course-settings` | Push course settings (sequential navigation, course-time display, labels) from each `details.json` |
-| `npm run generate:courses` | Regenerate the local preview index |
+| `npm run push:paths` | Push path titles, descriptions, header and item naming from each path's `details.json` |
+| `npm run push:lesson-settings` | Push lesson `optional`, description and tooltip from `lessons-meta.json` |
+| `npm run push:published-settings` | Push per-domain `hidden` and group visibility from `published.json` || `npm run generate:courses` | Regenerate the local preview index |
 | `npm run build:preview` | Pull + generate (full refresh) |
 | `npm run serve` | Start the local preview server at http://localhost:3000 |
 | `npm run export:plaintext` | Export course content as Markdown |
@@ -341,8 +343,9 @@ Two caveats worth knowing before you build anything on the output:
   assuming. If your instance has separate path objects per domain, note that
   two different path ids can share a slug, and only the slug is common to both.
 
-Paths are read-only here: `npm run push` syncs course and lesson content, and
-does not write path titles or descriptions back upstream.
+`npm run push` syncs course and lesson content and leaves paths alone. Path
+titles, descriptions and item naming have their own command,
+`npm run push:paths` (see "Path details, lesson settings and visibility").
 
 ## 🔁 Sync Local Edits Back to Skilljar
 
@@ -389,8 +392,8 @@ written, since Skilljar recomputes both.
 
 Other course settings stay out on purpose. The short description, the manual
 course time text and the time format can be set through the API but never
-cleared again, and per-domain settings such as hidden or registration aren't
-in `details.json`. See `CLAUDE.md` ("Course settings writes") for what was
+cleared again. Per-domain visibility lives in `published.json` and has its
+own command (below). See `CLAUDE.md` ("Settings writes") for what was
 tested.
 
 Local wins: a course switched in the dashboard but not in `details.json` shows
@@ -401,6 +404,28 @@ override), and `--force` skips the prompt.
 Writing a setting bumps the course's `modified_at`, so the next `push` scans
 those courses once instead of skipping them.
 
+### Path details, lesson settings and visibility
+
+Three more commands work the same way: the same `--dry-run`, one prompt
+(`--force` to skip it), the same branch guard, a `PATCH` holding only the
+changed fields, and a read-back that exits 1 if anything else moved.
+
+| Command | Writes | From | Narrow with |
+|---|---|---|---|
+| `npm run push:paths` | A path's title, short and long description, header, and what it calls its items (`course_name_singular`, `course_name_plural`) | each path's `details.json` | `--path <dir\|id>` |
+| `npm run push:lesson-settings` | Whether a lesson is `optional`, its `description_html`, its `tooltip_html` | each course's `lessons-meta.json` | `--course <dir\|id>` |
+| `npm run push:published-settings` | `hidden` and `strict_enforce_group_visibility`, per domain | each course's and path's `published.json` | `--domain <host>` |
+
+- `push:paths` reads `PATH_CONTENT_PATH`, which `pull:paths` writes.
+- `push:lesson-settings` costs one lesson list per course. Lesson titles stay
+  with `push`.
+- `push:published-settings` needs `published.json` files that record
+  `strict_enforce_group_visibility`. `pull:slugs` and `pull:paths` write it
+  from this version on, so rerun them first. Until then a file without the
+  field has no opinion about it. Slugs are in the same file and are never
+  written.
+- **Hiding a path's last visible course closes registration on that path.**
+  `push:published-settings` warns before the prompt when a run would do that.
 ## 🛠️ Example Workflows
 
 ### 🔄 Pull and refresh everything (Skilljar → local)

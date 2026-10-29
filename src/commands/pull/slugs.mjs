@@ -96,7 +96,7 @@ async function fetchPublished(domain) {
     console.log(chalk.yellow(`! Course id ${cid} is in ${dirs.length} directories: ${dirs.join(', ')}`));
   }
 
-  // Collect: courseId -> { domain -> { slug, published_course_id, live, hidden } }
+  // Collect: courseId -> { domain -> { slug, published_course_id, hidden, strict_enforce_group_visibility } }
   const collected = {};
   const titles = {};
   for (const domain of domains) {
@@ -109,7 +109,8 @@ async function fetchPublished(domain) {
       (collected[cid] ??= {})[domain] = {
         slug: pc.slug,
         published_course_id: pc.id,
-        hidden: pc.hidden ?? false
+        hidden: pc.hidden ?? false,
+        strict_enforce_group_visibility: pc.strict_enforce_group_visibility ?? false
       };
     }
   }

@@ -86,7 +86,8 @@ export function publishedEntry(publishedPath) {
   return {
     slug: publishedPath.slug,
     published_path_id: publishedPath.id,
-    hidden: publishedPath.hidden ?? false
+    hidden: publishedPath.hidden ?? false,
+    strict_enforce_group_visibility: publishedPath.strict_enforce_group_visibility ?? false
   };
 }
 
@@ -173,7 +174,7 @@ async function main() {
     console.log(chalk.gray('  to record each path\'s per-domain slug.'));
   }
 
-  // path id -> { domain -> { slug, published_path_id, hidden } }
+  // path id -> { domain -> { slug, published_path_id, hidden, strict_enforce_group_visibility } }
   const published = {};
   for (const domain of domains) {
     let records;

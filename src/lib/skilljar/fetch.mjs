@@ -136,6 +136,21 @@ export function fetchGroupMembers(client, groupId) {
   );
 }
 
+/** Every learning path, with title, descriptions and item naming. */
+export function fetchPaths(client) {
+  return fetchAllPages(client, '/paths', {}, 'Could not list paths');
+}
+
+/** Every course published on one domain, with its per-domain settings. */
+export function fetchPublishedCourses(client, domain) {
+  return fetchAllPages(client, `/domains/${domain}/published-courses`, {}, `Could not list published courses for ${domain}`);
+}
+
+/** Every path published on one domain, with its per-domain settings. */
+export function fetchPublishedPaths(client, domain) {
+  return fetchAllPages(client, `/domains/${domain}/published-paths`, {}, `Could not list published paths for ${domain}`);
+}
+
 /**
  * Every label defined in the organisation. A course's `labels` holds their
  * names.
