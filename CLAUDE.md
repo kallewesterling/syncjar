@@ -234,10 +234,11 @@ never written to** — the worst a wrong skip does is not report drift, and
 decides to *write*, or to *not pull*, loses that property and needs the
 experiment run first.
 
-## Course settings writes
+## Settings writes
 
-Established on 2026-10-28 against a throwaway course published only on the
-staging domain, then set back.
+Established on 2026-10-28 and 2026-10-29 against throwaway objects published
+only on the staging domain: a course, two lessons in it, and a path. Every
+field was set back afterwards.
 
 - **`PATCH /courses/{id}` is a true partial update.** A body of only
   `{ "enforce_sequential_navigation": true }` returned 200, and both the
@@ -275,22 +276,62 @@ leaves them as they were rather than resetting them, and
 unchanged slug ("A published course with this slug already exists"), so PUT
 is unusable there. Clearing them takes the dashboard.
 
-`push:course-settings` writes only the fields in `COURSE_SETTINGS`
-(`src/lib/push/course-settings.mjs`): `enforce_sequential_navigation`, the two
-course-time display flags, and `labels`. It refuses labels that `GET /labels`
-does not list, rather than find out what an unknown one does. It reads every
-written course back, and allows `course_time` to move only when a display flag
-was written.
+Paths, published paths and lessons, tested the same way:
 
-Keep fields that cannot be cleared out of that list. A push of one is a change
-nobody can undo through the API, and the published-course fields are per
-domain and are not in `details.json` at all.
+| Field | Result |
+|---|---|
+| Path (`PATCH /paths/{id}`): `title`, `short_description`, `long_description_html`, `header_html`, `course_name_singular`, `course_name_plural` | Round-trip cleanly. Unlike a course's, a path's `short_description` can be blanked again. The published path's embedded copy of the path follows. |
+| Published path: `hidden`, `strict_enforce_group_visibility`, `unique_progress_per_enrollment` | Round-trip cleanly. |
+| Published path: `slug` | Round-trips cleanly; `path_url` follows. |
+| Lesson (`PATCH /lessons/{id}`): `optional`, `description_html`, `tooltip_html`, `title`, `time_seconds`, `search_keywords`, `display_fullscreen`, `order` | Round-trip cleanly, with no `course_id` needed in the body. `optional` also changes the published course's required-lesson count. `order` moved only the lesson written; the others were not renumbered. |
 
-Before adding a field, check it is in `PatchedCourseRequest` in the spec, and
-test it the same way: set it on a throwaway course, read it back, diff the
-whole record, set it back. `push` does not touch these settings, and its
-skip-state fingerprint does not hash them, so adding them there would force a
-full rescan of every course once.
+A path's id and its published-path id are different ids. A path's
+`GET /paths` id is what `PATCH /paths/{id}` takes; the id in
+`/domains/{d}/published-paths` is the published path's own. On some paths
+the two are equal, which hides the difference.
+
+**A path with no visible course on a domain has its registration closed
+there** (`offer.registration_open` false). Recorded on 2026-10-28 by hiding a
+staging path's only course and unhiding it again. So hiding a path's last
+visible course closes the path.
+
+What writes these, and from where:
+
+| Command | Writes | From |
+|---|---|---|
+| `push:course-settings` | `enforce_sequential_navigation`, the two course-time display flags, `labels` | each course's `details.json` |
+| `push:paths` | the six path fields above | each path's `details.json` |
+| `push:lesson-settings` | `optional`, `description_html`, `tooltip_html` | each course's `lessons-meta.json` |
+| `push:published-settings` | `hidden`, `strict_enforce_group_visibility` | each course's and path's `published.json`, per domain |
+
+All four share `src/lib/push/settings.mjs` (planning and read-back) and
+`settings-run.mjs` (branch guard, one prompt, stop at the first failed write).
+Each reads every written record back and fails on a value that did not land
+or any other field that moved. `push:course-settings` allows `course_time` to
+move when a display flag was written, and `push:published-settings` ignores
+`offer.registration_open`, which it warns about before the prompt instead.
+`push:course-settings` refuses labels that `GET /labels` does not list, rather
+than find out what an unknown one does.
+
+Left out on purpose:
+
+- **Fields that cannot be cleared.** A push of one is a change nobody can
+  undo through the API.
+- **Slugs.** Writable, but a change breaks every link to the course or path.
+- **Lesson titles.** `push` already writes them.
+- **Lesson `order`.** Reordering is a different job from flipping a setting.
+- **Lesson `time_seconds`, `search_keywords`, `display_fullscreen`.** No
+  lesson uses them.
+- **The uniform published-course settings** (`registration_required` and the
+  rest). They are the same on every course, so nobody needs to edit them
+  from git.
+
+Before adding a field, check it is in the matching `Patched…Request` schema in
+the spec, and test it the same way: set it on a throwaway object, read it
+back, diff the whole record and every record that embeds it, set it back.
+`push` does not touch these settings, and its skip-state fingerprint does not
+hash them, so adding them there would force a full rescan of every course
+once.
 
 ## Quiz writes: what the API does, as opposed to what the spec says
 

@@ -34,16 +34,16 @@ test('matchesFilter tolerates a path with no title', () => {
   assert.ok(matchesFilter('Some-Dir', null, 'some'));
 });
 
-test('publishedEntry keeps the per-domain fields and defaults hidden', () => {
+test('publishedEntry keeps the per-domain fields and defaults the visibility flags', () => {
   assert.deepEqual(
-    publishedEntry({ id: 'pp1', slug: 'a-path', hidden: true, path: { id: 'p1' } }),
-    { slug: 'a-path', published_path_id: 'pp1', hidden: true }
+    publishedEntry({ id: 'pp1', slug: 'a-path', hidden: true, strict_enforce_group_visibility: true, path: { id: 'p1' } }),
+    { slug: 'a-path', published_path_id: 'pp1', hidden: true, strict_enforce_group_visibility: true }
   );
-  // Absent `hidden` means visible, not undefined — otherwise the key would be
+  // Absent flags mean off, not undefined — otherwise the keys would be
   // dropped by JSON.stringify and every comparison would report drift.
   assert.deepEqual(
     publishedEntry({ id: 'pp2', slug: 'b-path' }),
-    { slug: 'b-path', published_path_id: 'pp2', hidden: false }
+    { slug: 'b-path', published_path_id: 'pp2', hidden: false, strict_enforce_group_visibility: false }
   );
 });
 

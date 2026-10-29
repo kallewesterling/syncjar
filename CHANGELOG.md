@@ -29,6 +29,18 @@ and version scheme in `CLAUDE.md`.
   order, and a label that `GET /labels` doesn't list is refused. Fields the
   API can set but never clear (`short_description`, `manual_course_time`,
   `course_and_lesson_time_format`) stay out.
+- `npm run push:paths` pushes each path's title, descriptions, header and item
+  naming from its `details.json`, with `PATCH /paths/{id}`.
+- `npm run push:lesson-settings` pushes each lesson's `optional`,
+  `description_html` and `tooltip_html` from `lessons-meta.json`, with
+  `PATCH /lessons/{id}`.
+- `npm run push:published-settings` pushes per-domain `hidden` and
+  `strict_enforce_group_visibility` for courses and paths from
+  `published.json`. It warns before the prompt when a run would hide a path's
+  last visible course, which closes registration on the path.
+- All the settings pushes share one planner and one run: compare an allowlist,
+  show every change, prompt once, stop at the first failed write, then read
+  back and fail if a value didn't land or anything else moved.
 - `pull` keeps lesson metadata it used to fetch and discard (`type`,
   `optional`, `time_seconds`, `search_keywords`, `tooltip_html`,
   `display_fullscreen` and the `content_*_id` references), and records quiz,
@@ -63,6 +75,9 @@ and version scheme in `CLAUDE.md`.
 
 ### Changed
 
+- `pull:slugs` and `pull:paths` also record `strict_enforce_group_visibility`
+  in each `published.json`. The first pull after upgrading rewrites every
+  `published.json` once to add it.
 - `preview.config.json` is no longer tracked. It held a real Skilljar
   domain and theme URLs. `preview.config.example.json` is the template, and
   `serve` previews unstyled when the file is missing. An existing local copy is
