@@ -111,7 +111,9 @@ npm run build:preview
 | `npm run push:course-settings` | Push course settings (sequential navigation, course-time display, labels) from each `details.json` |
 | `npm run push:paths` | Push path titles, descriptions, header and item naming from each path's `details.json` |
 | `npm run push:lesson-settings` | Push lesson `optional`, description and tooltip from `lessons-meta.json` |
-| `npm run push:published-settings` | Push per-domain `hidden` and group visibility from `published.json` || `npm run generate:courses` | Regenerate the local preview index |
+| `npm run push:published-settings` | Push per-domain `hidden` and group visibility from `published.json` |
+| `npm run check:settings` | Report courses and paths whose settings differ from the rest (read-only) |
+| `npm run generate:courses` | Regenerate the local preview index |
 | `npm run build:preview` | Pull + generate (full refresh) |
 | `npm run serve` | Start the local preview server at http://localhost:3000 |
 | `npm run export:plaintext` | Export course content as Markdown |
@@ -426,6 +428,25 @@ changed fields, and a read-back that exits 1 if anything else moved.
   written.
 - **Hiding a path's last visible course closes registration on that path.**
   `push:published-settings` warns before the prompt when a run would do that.
+
+### Checking for odd settings
+
+`npm run check:settings` is read-only. For each course, published course, path
+and published path setting, it finds the value most records use. If one
+value covers at least 90% of them (`--threshold`), it lists every record that
+differs, which is usually a dashboard slip. Settings that are genuinely split,
+such as `hidden`, are shown as varying rather than flagged. Nothing is
+hardcoded, so the norm is whatever your catalog does.
+
+```bash
+npm run check:settings                                   # report
+npm run check:settings -- --domain courses.example.com   # one domain
+npm run check:settings -- --fail-on-outliers             # exit 1 if anything is flagged, for CI
+```
+
+Domains come from `--domain`, then `SKILLJAR_DOMAINS`, then every domain the
+key can see.
+
 ## 🛠️ Example Workflows
 
 ### 🔄 Pull and refresh everything (Skilljar → local)
