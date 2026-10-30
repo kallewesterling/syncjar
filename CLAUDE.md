@@ -118,7 +118,12 @@ Observed on 2026-10-30:
 - **v2 cannot list a group's members.** There is no GET on
   `/groups/{id}/relationships/students/`, only POST and DELETE, which take
   student ids, not emails. Hence the per-email `GET /students/?filter[email]=`.
-- v2 ids are not v1 ids. Do not pass an id from a v1 read to a v2 call.
+- **Content ids are shared with v1; student ids are not.** Checked against
+  the whole local course tree: all 74 courses, 698 lessons and their
+  content items, 136 quizzes, and one quiz's questions and answers have the
+  same id in both. Five of five students had a different v2 id from their v1
+  user id. Never pass a v1 user id to a v2 call; look the student up by
+  email.
 - **A group's `rule_email_domains` is written whole.** `PATCH /groups/`
   replaces the array, so `group:domains` re-reads it after the prompt and
   aborts if it moved, then reads back. v1 has a true add/remove
