@@ -59,8 +59,8 @@ export function redactError(error) {
   const safe = new Error(error.message);
   safe.stack = error.stack;
   if (error.code !== undefined) safe.code = error.code;
-  safe.method = error.config?.method?.toUpperCase();
-  safe.url = error.config?.url;
+  safe.method = error.config?.method?.toUpperCase() ?? error.method;
+  safe.url = error.config?.url ?? error.url;
   if (error.response) {
     // Deliberately not response.headers: Skilljar does not echo the
     // Authorization header back, but nothing guarantees that, and no consumer
@@ -75,6 +75,28 @@ export function redactError(error) {
 }
 
 /**
+ * The human-readable part of a failed call's response body, or '' if there
+ * is none short enough to print. Understands v1's `detail` string, v2's
+ * JSON:API `errors` array, and the OAuth `error_description` that v2's token
+ * endpoint returns.
+ */
+export function errorDetail(err) {
+  const body = err?.response?.data;
+  if (typeof body === 'string') return body.length < 300 ? body : '';
+  if (body?.detail) return String(body.detail);
+  if (Array.isArray(body?.errors) && body.errors.length) {
+    return body.errors.map((e) => e.detail || e.title || e.code).filter(Boolean).join('; ');
+  }
+  if (body?.error) return body.error_description ? `${body.error}: ${body.error_description}` : String(body.error);
+  return '';
+}
+
+const V1_CREDENTIALS_HINT = [
+  'Check SKILLJAR_API_KEY in .env, and that outbound',
+  'access to api.skilljar.com is permitted from here.'
+];
+
+/**
  * Reports a failed Skilljar call and exits 1. **Does not return.**
  *
  * An unhandled axios rejection prints the whole request object — including the
@@ -82,22 +104,22 @@ export function redactError(error) {
  * form. So no catch block may print the error itself: status and a short body
  * only. Every caller of this module's client is expected to route its failures
  * through here.
+ *
+ * `credentialsHint` replaces the lines printed on a 401 or 403, for clients
+ * that authenticate with something other than SKILLJAR_API_KEY.
  */
-export function failCleanly(err, context) {
+export function failCleanly(err, context, { credentialsHint = V1_CREDENTIALS_HINT } = {}) {
   const status = err?.response?.status;
-  const body = err?.response?.data;
+  const detail = errorDetail(err);
   console.error(chalk.red(`\n✗ ${context}`));
   if (status) console.error(chalk.red(`   HTTP ${status}`));
-  if (typeof body === 'string' && body.length < 300) {
-    console.error(chalk.red(`   ${body}`));
-  } else if (body?.detail) {
-    console.error(chalk.red(`   ${body.detail}`));
+  if (detail) {
+    console.error(chalk.red(`   ${detail}`));
   } else if (!status) {
     console.error(chalk.red(`   ${err?.code || err?.message || 'unknown error'}`));
   }
   if (status === 401 || status === 403) {
-    console.error(chalk.yellow('   Check SKILLJAR_API_KEY in .env, and that outbound'));
-    console.error(chalk.yellow('   access to api.skilljar.com is permitted from here.'));
+    for (const line of credentialsHint) console.error(chalk.yellow(`   ${line}`));
   }
   process.exit(1);
 }
@@ -118,6 +140,16 @@ export function createSkilljarClient() {
     auth: { username: apiKey, password: '' }
   });
 
+  return attachRetries(client);
+}
+
+/**
+ * Retries `client`'s throttled (429) and transient 5xx responses, honouring
+ * Retry-After, and redacts every error it finally rejects with. Must be the
+ * last response interceptor registered: any registered after it only ever
+ * see redacted errors, which have no `config` left to retry with.
+ */
+export function attachRetries(client) {
   client.interceptors.response.use(
     (response) => response,
     async (error) => {

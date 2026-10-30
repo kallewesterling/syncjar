@@ -98,6 +98,28 @@ JavaScript-rendered, so `curl` gets an empty shell, but the OpenAPI spec it
 loads is plain YAML and greps well:
 `curl -s https://api.skilljar.com/docs/schema.yml`.
 
+## API v2: scoped OAuth clients, and what they can't do
+
+`src/lib/skilljar/client-v2.mjs` talks to `https://api.skilljar.com/v2`
+(spec: `curl -s https://api.skilljar.com/v2/openapi.json`). It does not take
+the v1 key. `SKILLJAR_CLIENT_ID` and `SKILLJAR_CLIENT_SECRET` are exchanged at
+`POST /v2/auth/token` for a JWT that lasts 900 seconds, and every operation
+needs a named scope on that client. A client can therefore be issued for one
+job, which is why `group:add` and `group:remove` use v2: the partner team can
+hold a client that changes group membership and nothing else.
+
+Observed on 2026-10-30:
+
+- **The token response carries no `scope`**, so a missing scope only shows
+  up as a 403 (`permission_denied`) on the call that needs it. A client with
+  `student-groups:*` but not `students:read` reads groups and then fails the
+  email lookup.
+- **An inactive client is a 401** `invalid_client`, "Client is inactive."
+- **v2 cannot list a group's members.** There is no GET on
+  `/groups/{id}/relationships/students/`, only POST and DELETE, which take
+  student ids, not emails. Hence the per-email `GET /students/?filter[email]=`.
+- v2 ids are not v1 ids. Do not pass an id from a v1 read to a v2 call.
+
 ## lessons-meta.json: `content_items` means files
 
 Every entry in a lesson's `content_items` names an HTML file, and every
