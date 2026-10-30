@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   ALREADY_MEMBER_MARGIN_MS,
+  alreadyMemberCutoff,
   chunk,
   classifyLookups,
   membershipBody,
@@ -60,7 +61,7 @@ test('an add tells new members from existing ones by when the membership was cre
     ],
     summary: { total: 4, succeeded: 2, failed: 1 }
   };
-  const rows = readBatchResult('add', sent, body, sentAt);
+  const rows = readBatchResult('add', sent, body, alreadyMemberCutoff({ sentAt, receivedAt: sentAt }));
   assert.deepEqual(rows.map((r) => [r.email, r.result, r.before, r.after, r.is_manager]), [
     ['new@example.com', 'added', 'not_member', 'member', 'false'],
     ['old@example.com', 'already_member', 'member', 'member', 'true'],
@@ -71,14 +72,25 @@ test('an add tells new members from existing ones by when the membership was cre
   assert.match(rows[3].error, /no result/);
 });
 
-test('a membership created within the skew margin counts as new', () => {
-  const body = { data: [{ status: 'succeeded', result: { attributes: { student_id: 's1', is_manager: false, created_at: new Date(sentAt - ALREADY_MEMBER_MARGIN_MS + 1000).toISOString() } } }] };
-  assert.equal(readBatchResult('add', sent.slice(0, 1), body, sentAt)[0].result, 'added');
+const addedAt = (createdAt) => ({ data: [{ status: 'succeeded', result: { attributes: { student_id: 's1', is_manager: false, created_at: new Date(createdAt).toISOString() } } }] });
+
+test('without a Date header, a membership created within the skew margin counts as new', () => {
+  const cutoff = alreadyMemberCutoff({ sentAt, receivedAt: sentAt + 500 });
+  assert.equal(readBatchResult('add', sent.slice(0, 1), addedAt(sentAt - ALREADY_MEMBER_MARGIN_MS + 1000), cutoff)[0].result, 'added');
+});
+
+test('with a Date header, a membership made seconds earlier is an existing one, whatever the local clock says', () => {
+  // This machine's clock is ten minutes slow; Skilljar's is right.
+  const server = Date.parse('2026-10-30T19:00:52Z');
+  const local = server - 10 * 60_000;
+  const cutoff = alreadyMemberCutoff({ sentAt: local, receivedAt: local + 400, serverDate: new Date(server).toUTCString() });
+  assert.equal(readBatchResult('add', sent.slice(0, 1), addedAt(server - 5_000), cutoff)[0].result, 'already_member');
+  assert.equal(readBatchResult('add', sent.slice(0, 1), addedAt(server - 300), cutoff)[0].result, 'added');
 });
 
 test('a remove reports removed without claiming to know the prior state', () => {
   const body = { data: [{ status: 'deleted', id: 's2' }, { status: 'deleted', id: 's1' }] };
-  const rows = readBatchResult('remove', sent.slice(0, 2), body, sentAt);
+  const rows = readBatchResult('remove', sent.slice(0, 2), body, alreadyMemberCutoff({ sentAt, receivedAt: sentAt }));
   assert.deepEqual(rows.map((r) => [r.student_id, r.result, r.before, r.after]), [
     ['s1', 'removed', 'unknown', 'not_member'],
     ['s2', 'removed', 'unknown', 'not_member']

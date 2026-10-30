@@ -28,11 +28,29 @@ export const ACTIONS = {
 // The spec's maxItems for both membership envelopes.
 export const MEMBERSHIP_BATCH_SIZE = 100;
 
-// A membership created this long before its batch was sent was already
-// there. Wide enough to absorb clock skew between this machine and
-// Skilljar's; a membership made by someone else in that window reads as
-// newly added, which is the harmless direction.
+// Without a Date header, a membership created this long before its batch
+// was sent was already there: wide enough to absorb clock skew between this
+// machine and Skilljar's. A membership made in that window reads as newly
+// added, which is the harmless direction.
 export const ALREADY_MEMBER_MARGIN_MS = 5 * 60_000;
+
+// With one: the header is whole seconds, so allow for that and a little
+// network asymmetry.
+const SERVER_DATE_SLACK_MS = 2_000;
+
+/**
+ * The time before which a membership's `created_at` means the student was
+ * already a member. Skilljar returns the original `created_at` when a
+ * student is added again. Measured against the response's `Date` header,
+ * Skilljar's own clock, this catches a membership made seconds before the
+ * run; without the header it falls back to the local clock and the wide
+ * margin.
+ */
+export function alreadyMemberCutoff({ sentAt, receivedAt, serverDate }) {
+  const server = Date.parse(serverDate ?? '');
+  if (!Number.isFinite(server)) return sentAt - ALREADY_MEMBER_MARGIN_MS;
+  return server - (receivedAt - sentAt) - SERVER_DATE_SLACK_MS;
+}
 
 const EMAIL = /^[^\s@,;<>"]+@[^\s@,;<>"]+\.[^\s@,;<>"]+$/;
 
@@ -142,9 +160,9 @@ function pointerIndex(item) {
  * @param {'add'|'remove'} action
  * @param {{ email: string, id: string }[]} sent  in request order
  * @param {object} body  the BatchResultEnvelope or BatchDeleteResultEnvelope
- * @param {number} sentAt  ms timestamp taken just before the request
+ * @param {number} cutoff  from `alreadyMemberCutoff`
  */
-export function readBatchResult(action, sent, body, sentAt) {
+export function readBatchResult(action, sent, body, cutoff) {
   const items = Array.isArray(body?.data) ? body.data : [];
   const byId = new Map();
   items.forEach((item, i) => {
@@ -168,7 +186,7 @@ export function readBatchResult(action, sent, body, sentAt) {
     if (action === 'add' && item.status === 'succeeded') {
       const attrs = item.result?.attributes ?? {};
       const createdAt = Date.parse(attrs.created_at);
-      const already = Number.isFinite(createdAt) && createdAt < sentAt - ALREADY_MEMBER_MARGIN_MS;
+      const already = Number.isFinite(createdAt) && createdAt < cutoff;
       return {
         ...row,
         before: already ? 'member' : 'not_member',
