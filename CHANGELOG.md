@@ -24,6 +24,20 @@ and version scheme in `CLAUDE.md`.
   Credentials are read from `.env` in the current directory, then
   `~/.config/syncjar/.env`.
 
+- `group:add` and `group:remove` add existing students to a group, and
+  remove them, by email, through Skilljar's v2 API. They authenticate with a
+  scoped OAuth client (`SKILLJAR_CLIENT_ID`, `SKILLJAR_CLIENT_SECRET`), not
+  the v1 key, so they can be run by people who should not hold that key.
+  Dry run by default. `--confirm` asks for a typed confirmation, writes in
+  batches of 100, stops at the first batch that fails, and writes an audit
+  CSV.
+
+- `group:domains` lists a group's auto-add email domains, and adds or
+  removes them, through the v2 API. Since v2 replaces the whole list, a
+  confirmed run re-reads it before writing and aborts if it changed, then
+  reads it back. Free-mail domains are refused unless
+  `--allow-public-domain` is passed.
+
 - `npm run push:course-settings` pushes course-level settings from each
   course's `details.json`. Today that is only `enforce_sequential_navigation`
   ("Enforce sequential navigation" in the dashboard). A dry run is one request

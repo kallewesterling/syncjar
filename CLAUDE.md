@@ -98,6 +98,67 @@ JavaScript-rendered, so `curl` gets an empty shell, but the OpenAPI spec it
 loads is plain YAML and greps well:
 `curl -s https://api.skilljar.com/docs/schema.yml`.
 
+## API v2: scoped OAuth clients, and what they can't do
+
+`src/lib/skilljar/client-v2.mjs` talks to `https://api.skilljar.com/v2`
+(spec: `curl -s https://api.skilljar.com/v2/openapi.json`). It does not take
+the v1 key. `SKILLJAR_CLIENT_ID` and `SKILLJAR_CLIENT_SECRET` are exchanged at
+`POST /v2/auth/token` for a JWT that lasts 900 seconds, and every operation
+needs a named scope on that client. A client can therefore be issued for one
+job, which is why `group:add` and `group:remove` use v2: the partner team can
+hold a client that changes group membership and nothing else.
+
+Observed on 2026-10-30:
+
+- **The token response carries no `scope`**, so a missing scope only shows
+  up as a 403 (`permission_denied`) on the call that needs it. A client with
+  `student-groups:*` but not `students:read` reads groups and then fails the
+  email lookup.
+- **An inactive client is a 401** `invalid_client`, "Client is inactive."
+- **v2 cannot list a group's members.** There is no GET on
+  `/groups/{id}/relationships/students/`, only POST and DELETE, which take
+  student ids, not emails. Hence the per-email `GET /students/?filter[email]=`.
+- **Content ids are shared with v1; student ids are not.** Checked against
+  the whole local course tree: all 74 courses, 698 lessons and their
+  content items, 136 quizzes, and one quiz's questions and answers have the
+  same id in both. Five of five students had a different v2 id from their v1
+  user id. Never pass a v1 user id to a v2 call; look the student up by
+  email.
+- **A group's `rule_email_domains` is written whole.** `PATCH /groups/`
+  replaces the array, so `group:domains` re-reads it after the prompt and
+  aborts if it moved, then reads back. v1 has a true add/remove
+  (`PATCH /v1/groups/{id}/email-domain-rules` with `add`/`remove`), but it
+  needs the v1 key, which is what v2 is here to avoid.
+
+Established on 2026-10-30 against a throwaway group created with
+`POST /v2/groups/` and deleted afterwards, with every other group
+snapshotted before and diffed after (none moved, `modified_at` included):
+
+- A PATCH of only `rule_email_domains` changed that field and `modified_at`
+  and nothing else. `group:domains` added a domain to an empty list, swapped
+  one for another, and removed the last one; each read back as written.
+- **The list can be cleared**: removing the last domain reads back as `[]`,
+  not an error, unlike the course fields that cannot be blanked.
+- The create response's attributes omit `category_id`; a read returns it as
+  `null`. Compare reads with reads.
+- `DELETE /v2/groups/` with `{ data: [{ type: 'groups', id }] }` returned 200
+  with `status: deleted`, then 404 on read. It is a **hard, batch delete**
+  that cascades memberships and visibility, so a script that calls it must
+  only ever pass an id it created itself.
+
+`group:add` and `group:remove` were tested the same way, the same day, with
+one real account (the maintainer's) in a throwaway group:
+
+- **Adding an existing member returns the original membership**: same
+  membership id, same `created_at`, status `succeeded`. That is the only
+  signal that a student was already in the group, so `alreadyMemberCutoff`
+  compares `created_at` with the response's `Date` header (Skilljar's clock,
+  in whole seconds) less the request time and 2s of slack. A membership made
+  within ~3s of the run still reads as new; without the header the cutoff
+  falls back to 5 minutes on the local clock.
+- **Removing a non-member also returns `deleted`**, with the student's id,
+  so a remove cannot report who was not in the group.
+
 ## lessons-meta.json: `content_items` means files
 
 Every entry in a lesson's `content_items` names an HTML file, and every
