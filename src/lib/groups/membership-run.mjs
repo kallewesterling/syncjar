@@ -91,7 +91,7 @@ async function readEmails(argv, readFile) {
   };
 }
 
-const describe = (err) => {
+export const describe = (err) => {
   const status = err?.response?.status;
   const detail = errorDetail(err) || (!status ? err?.code || err?.message : '');
   return `HTTP ${status ?? '-'}${detail ? ` — ${detail}` : ''}`;

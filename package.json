@@ -45,7 +45,8 @@
     "group:audit": "node src/commands/group/audit.mjs",
     "group:revoke": "node src/commands/group/revoke.mjs",
     "group:add": "node src/commands/group/add.mjs",
-    "group:remove": "node src/commands/group/remove.mjs"
+    "group:remove": "node src/commands/group/remove.mjs",
+    "group:domains": "node src/commands/group/domains.mjs"
   },
   "author": "",
   "license": "MIT",

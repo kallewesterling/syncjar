@@ -60,7 +60,7 @@ It's your local **Skilljar workspace**: Write content, test changes, see diffs, 
 │   │   ├── push/                    # push (index.mjs), push:quizzes, push:course-settings
 │   │   ├── export/                  # export:plaintext, :users, :metrics, :students
 │   │   ├── check/                   # check:links, check:membership
-│   │   ├── group/                   # group:audit, :revoke, :add, :remove
+│   │   ├── group/                   # group:audit, :revoke, :add, :remove, :domains
 │   │   ├── sync/                    # sync:users
 │   │   ├── generate/                # generate:courses
 │   │   └── serve.mjs                # serve
@@ -167,6 +167,7 @@ next `syncjar update` replaces. The preview commands (`serve`,
 | `npm run group:revoke -- --in <csv> --group <id>` | Revoke access for a reviewed list of users |
 | `npm run group:add -- --group-name <name> --in <csv>` | Add existing students to a group, by email (API v2; dry run unless `--confirm`) |
 | `npm run group:remove -- --group-name <name> --in <csv>` | Remove students from a group, by email (API v2; dry run unless `--confirm`) |
+| `npm run group:domains -- --group-name <name> [--add <domain>] [--remove <domain>]` | List or change a group's auto-add email domains (API v2; dry run unless `--confirm`) |
 | `npm test` | Run the unit tests |
 
 ### Group membership (API v2)
@@ -201,6 +202,29 @@ directory, holding names and addresses, so delete it when you are done.
 The v2 API cannot list a group's members. So an add reports who was already
 a member only after it runs, and a remove reports everyone sent as removed,
 whether or not they were in the group.
+
+### Auto-add email domains
+
+A group's email domains put every new student who signs up with an address
+at one of them into the group. `group:domains` lists and changes them, and
+needs only `student-groups:read` and `student-groups:write`:
+
+```bash
+syncjar group:domains --group-name "Partners"                          # list
+syncjar group:domains --group-name "Partners" --add acme.com           # dry run
+syncjar group:domains --group-name "Partners" --add acme.com --confirm # do it
+syncjar group:domains --group-name "Partners" --remove old.example --confirm
+```
+
+The domain rules apply at signup only. Students who already have an account are
+not added, so pair a new domain with `group:add` for them.
+
+The v2 API can only replace a group's whole domain list, not add one
+domain. So a confirmed run reads the list again just before writing and
+stops if it changed since the plan was shown, writes the merged list, and
+reads it back. It prints the previous list afterwards, so a mistake can be
+undone by hand. Free-mail domains such as `gmail.com` are refused unless
+you pass `--allow-public-domain`.
 
 ## 🗃 Course Directory Names
 
