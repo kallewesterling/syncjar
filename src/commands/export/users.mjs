@@ -1,6 +1,6 @@
 import fs from 'fs-extra';
 import path from 'path';
-import { repoRoot } from '#lib/paths.mjs';
+import { workRoot } from '#lib/paths.mjs';
 import { parse } from 'json2csv';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
@@ -16,8 +16,8 @@ const argv = yargs(hideBin(process.argv))
 
 const internalDomain = argv.internalDomain?.toLowerCase();
 
-const inputPath = path.join(repoRoot, 'public', 'data', 'user-progress.json');
-const outputPath = path.join(repoRoot, 'public', 'data', 'user-report.csv');
+const inputPath = path.join(workRoot, 'public', 'data', 'user-progress.json');
+const outputPath = path.join(workRoot, 'public', 'data', 'user-report.csv');
 
 const users = await fs.readJson(inputPath);
 

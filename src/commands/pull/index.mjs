@@ -1,6 +1,6 @@
 import fs from 'fs-extra';
 import path from 'path';
-import { repoRoot } from '#lib/paths.mjs';
+import { workRoot } from '#lib/paths.mjs';
 import dotenv from 'dotenv';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
@@ -44,10 +44,10 @@ const client = createSkilljarClient();
 // Fall back on the env var itself. `path.join(undefined, x) || fallback` throws
 // inside path.join before `||` is ever read.
 const contentPath = process.env.COURSE_CONTENT_PATH
-  || path.join(repoRoot, 'local-skilljar');
+  || path.join(workRoot, 'local-skilljar');
 
 const quizContentPath = process.env.QUIZ_CONTENT_PATH
-  || path.join(repoRoot, 'local-skilljar-quizzes');
+  || path.join(workRoot, 'local-skilljar-quizzes');
 
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 

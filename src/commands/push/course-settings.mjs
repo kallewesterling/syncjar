@@ -20,7 +20,7 @@ import inquirer from 'inquirer';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import dotenv from 'dotenv';
-import { repoRoot } from '#lib/paths.mjs';
+import { workRoot } from '#lib/paths.mjs';
 import { createSkilljarClient, failCleanly } from '#lib/skilljar/client.mjs';
 import { fetchCourses, fetchLabels } from '#lib/skilljar/fetch.mjs';
 import { listCourseDirs } from '#lib/content/course-dirs.mjs';
@@ -38,7 +38,7 @@ const argv = yargs(hideBin(process.argv))
   .strict()
   .argv;
 
-const coursesDir = process.env.COURSE_CONTENT_PATH || path.join(repoRoot, 'local-skilljar');
+const coursesDir = process.env.COURSE_CONTENT_PATH || path.join(workRoot, 'local-skilljar');
 
 async function readLocals() {
   const wanted = new Set(argv.course);
