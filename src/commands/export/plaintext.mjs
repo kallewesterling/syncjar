@@ -1,12 +1,12 @@
 import fs from 'fs-extra';
 import path from 'path';
-import { repoRoot } from '#lib/paths.mjs';
+import { workRoot } from '#lib/paths.mjs';
 import { htmlToText } from 'html-to-text';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
-const exportDir = path.resolve(process.env.COURSE_CONTENT_PATH || path.join(repoRoot, 'local-skilljar'));
+const exportDir = path.resolve(process.env.COURSE_CONTENT_PATH || path.join(workRoot, 'local-skilljar'));
 const outputDir = path.resolve('./courses-plaintext');
 
 await fs.ensureDir(outputDir);

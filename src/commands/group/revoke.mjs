@@ -38,7 +38,7 @@
 
 import fs from 'fs-extra';
 import path from 'path';
-import { repoRoot } from '#lib/paths.mjs';
+import { workRoot } from '#lib/paths.mjs';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import { parse } from 'json2csv';
@@ -54,7 +54,7 @@ const argv = yargs(hideBin(process.argv))
   .option('limit', { type: 'number', describe: 'Only act on the first N users. Use --limit 1 to test on one person.' })
   .option('only-email', { type: 'string', describe: 'Act on this single email address only (must be present in --in)' })
   .option('confirm', { type: 'boolean', default: false, describe: 'Actually write. Without this it is a dry run.' })
-  .option('audit-dir', { type: 'string', default: path.join(repoRoot, 'public', 'data') })
+  .option('audit-dir', { type: 'string', default: path.join(workRoot, 'public', 'data') })
   .check((a) => {
     if (!a.domain.length && !a.group.length) throw new Error('Pass at least one --domain or --group.');
     if (a.reactivate && a.group.length) throw new Error('--reactivate applies to --domain only; re-add to groups deliberately.');
