@@ -43,7 +43,9 @@
     "check:settings": "node src/commands/check/settings.mjs",
     "sync:users": "node src/commands/sync/users.mjs",
     "group:audit": "node src/commands/group/audit.mjs",
-    "group:revoke": "node src/commands/group/revoke.mjs"
+    "group:revoke": "node src/commands/group/revoke.mjs",
+    "group:add": "node src/commands/group/add.mjs",
+    "group:remove": "node src/commands/group/remove.mjs"
   },
   "author": "",
   "license": "MIT",

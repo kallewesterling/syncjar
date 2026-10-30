@@ -60,7 +60,7 @@ It's your local **Skilljar workspace**: Write content, test changes, see diffs, 
 │   │   ├── push/                    # push (index.mjs), push:quizzes, push:course-settings
 │   │   ├── export/                  # export:plaintext, :users, :metrics, :students
 │   │   ├── check/                   # check:links, check:membership
-│   │   ├── group/                   # group:audit, group:revoke
+│   │   ├── group/                   # group:audit, :revoke, :add, :remove
 │   │   ├── sync/                    # sync:users
 │   │   ├── generate/                # generate:courses
 │   │   └── serve.mjs                # serve
@@ -68,7 +68,7 @@ It's your local **Skilljar workspace**: Write content, test changes, see diffs, 
 │       ├── skilljar/                # API client and paginated list reads
 │       ├── content/                 # The local course, lesson and quiz trees
 │       ├── push/                    # Push planning, state, diffs, quiz plans
-│       ├── groups/                  # Group audit logic
+│       ├── groups/                  # Group audit and membership logic
 │       └── paths.mjs, ui.mjs, …     # Shared helpers
 │
 ├── test/                            # node --test; imports lib as #lib/*
@@ -165,7 +165,42 @@ next `syncjar update` replaces. The preview commands (`serve`,
 | `npm run sync:users` | Sync user data from Skilljar |
 | `npm run group:audit -- --group <id> --roster <csv>` | List group members who are not on a roster (read-only) |
 | `npm run group:revoke -- --in <csv> --group <id>` | Revoke access for a reviewed list of users |
+| `npm run group:add -- --group-name <name> --in <csv>` | Add existing students to a group, by email (API v2; dry run unless `--confirm`) |
+| `npm run group:remove -- --group-name <name> --in <csv>` | Remove students from a group, by email (API v2; dry run unless `--confirm`) |
 | `npm test` | Run the unit tests |
+
+### Group membership (API v2)
+
+`group:add` and `group:remove` use Skilljar's v2 API, not the v1 key. They
+need an OAuth client with exactly three scopes: `student-groups:read`,
+`student-groups:write` and `students:read`, the last for looking students up
+by email. Such a client can change group membership and nothing else, so it
+is the one to hand to someone who should not hold the v1 key:
+
+```env
+SKILLJAR_CLIENT_ID=...
+SKILLJAR_CLIENT_SECRET=...
+```
+
+```bash
+# Dry run: reads only, and shows who would be added
+syncjar group:add --group-name "Partner: Acme" --in acme.csv
+
+# Do it: asks you to type "add <n>" first
+syncjar group:add --group-name "Partner: Acme" --in acme.csv --confirm
+
+# A few addresses without a file; --group takes the v2 group id instead
+syncjar group:remove --group <id> --email a@acme.com --email b@acme.com --confirm
+```
+
+`--in` is a CSV with an `email` column, or one address per line. Nobody is
+created: an email with no Skilljar account is listed and skipped. Each
+confirmed run writes an audit CSV to `public/data/` under the current
+directory, holding names and addresses, so delete it when you are done.
+
+The v2 API cannot list a group's members. So an add reports who was already
+a member only after it runs, and a remove reports everyone sent as removed,
+whether or not they were in the group.
 
 ## 🗃 Course Directory Names
 
