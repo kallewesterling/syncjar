@@ -160,6 +160,8 @@ next `syncjar update` replaces. The preview commands (`serve`,
 | `npm run export:users -- --internal-domain <domain>` | Export Skilljar users to CSV, flagging users at `<domain>` as internal (or set `SYNCJAR_INTERNAL_DOMAIN`) |
 | `npm run export:metrics` | Export course metrics to CSV |
 | `npm run export:students` | Export the flat Skilljar student list to CSV |
+| `npm run export:analytics -- [--by-domain]` | Export each course's enrollments, completions and certificates to CSV, optionally per domain (API v2) |
+| `npm run export:analytics -- [--by-domain]` | Export each course's enrollments, completions and certificates to CSV, optionally per domain (API v2) |
 | `npm run check:links` | Check for broken links in course content |
 | `npm run check:membership -- --group <id>` | Report whether users are still in a student group (read-only) |
 | `npm run sync:users` | Sync user data from Skilljar |
@@ -202,6 +204,40 @@ directory, holding names and addresses, so delete it when you are done.
 The v2 API cannot list a group's members. So an add reports who was already
 a member only after it runs, and a remove reports everyone sent as removed,
 whether or not they were in the group.
+
+### Course analytics (API v2)
+
+`export:analytics` writes Skilljar's own per-course summary to
+`public/data/course-analytics.csv`: enrollments, completions, completion
+rate, certificates issued and ratings. It needs `courses:read` and
+`analytics:read`, plus `domains:read` for the per-domain options:
+
+```bash
+syncjar export:analytics                                 # one row per course
+syncjar export:analytics --by-domain                     # plus a row per course per domain
+syncjar export:analytics --domain courses.example.com    # plus one domain only
+```
+
+The figures are aggregates; there is nothing per student, lesson or quiz.
+Unlike `export:metrics`, it needs no `sync:users` first. A per-domain
+run makes one request per course per domain, so it takes about a minute.
+
+### Course analytics (API v2)
+
+`export:analytics` writes Skilljar's own per-course summary to
+`public/data/course-analytics.csv`: enrollments, completions, completion
+rate, certificates issued and ratings. It needs `courses:read` and
+`analytics:read`, plus `domains:read` for the per-domain options:
+
+```bash
+syncjar export:analytics                                 # one row per course
+syncjar export:analytics --by-domain                     # plus a row per course per domain
+syncjar export:analytics --domain courses.example.com    # plus one domain only
+```
+
+The figures are aggregates; there is nothing per student, lesson or quiz.
+Unlike `export:metrics`, it needs no `sync:users` first. A per-domain
+run makes one request per course per domain, so it takes about a minute.
 
 ### Auto-add email domains
 

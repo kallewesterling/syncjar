@@ -32,6 +32,16 @@ and version scheme in `CLAUDE.md`.
   batches of 100, stops at the first batch that fails, and writes an audit
   CSV.
 
+- `export:analytics` exports each course's enrollments, completions,
+  completion rate, certificates and ratings to CSV through the v2 API, with
+  a row per domain on request. Domain names are checked first, since
+  Skilljar's filter returns zeros for one it does not know.
+
+- `export:analytics` exports each course's enrollments, completions,
+  completion rate, certificates and ratings to CSV through the v2 API, with
+  a row per domain on request. Domain names are checked first, since
+  Skilljar's filter returns zeros for one it does not know.
+
 - `group:domains` lists a group's auto-add email domains, and adds or
   removes them, through the v2 API. Since v2 replaces the whole list, a
   confirmed run re-reads it before writing and aborts if it changed, then

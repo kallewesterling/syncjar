@@ -146,6 +146,36 @@ snapshotted before and diffed after (none moved, `modified_at` included):
   that cascades memberships and visibility, so a script that calls it must
   only ever pass an id it created itself.
 
+Reads, observed on 2026-10-30 with an all-`:read` client:
+
+- **`GET /lessons/{id}` carries `content_items`, which the spec omits**:
+  every item with `id`, `type`, `header` and, for HTML, the full
+  `content_html`. The list `GET /lessons/` has `content_html: null` for
+  every `MODULAR` lesson, as v1's does, so content still costs one request
+  per lesson, but one per lesson rather than v1's one per item. All 698
+  lessons read in 47s at concurrency 6, and every HTML item matched v1's
+  byte for byte.
+- **Analytics `filter[domains]` takes domain names, not ids.** A domain id
+  returns zeros rather than an error, so `export:analytics` checks names
+  against `GET /domains/` first. Per-domain enrollments summed exactly to
+  the unfiltered figure across all 74 courses. `rating_count` was 0 on every
+  course: the dashboard's lesson rating blocks are not these ratings.
+
+Reads, observed on 2026-10-30 with an all-`:read` client:
+
+- **`GET /lessons/{id}` carries `content_items`, which the spec omits**:
+  every item with `id`, `type`, `header` and, for HTML, the full
+  `content_html`. The list `GET /lessons/` has `content_html: null` for
+  every `MODULAR` lesson, as v1's does, so content still costs one request
+  per lesson, but one per lesson rather than v1's one per item. All 698
+  lessons read in 47s at concurrency 6, and every HTML item matched v1's
+  byte for byte.
+- **Analytics `filter[domains]` takes domain names, not ids.** A domain id
+  returns zeros rather than an error, so `export:analytics` checks names
+  against `GET /domains/` first. Per-domain enrollments summed exactly to
+  the unfiltered figure across all 74 courses. `rating_count` was 0 on every
+  course: the dashboard's lesson rating blocks are not these ratings.
+
 `group:add` and `group:remove` were tested the same way, the same day, with
 one real account (the maintainer's) in a throwaway group:
 
@@ -309,6 +339,17 @@ newly added courses, where there is no prior record to compare, and
 trailing-newline churn from the pull's own writes, which `normalizeHtml`
 correctly calls unchanged.) Settling it needs a deliberate content-only push
 followed by a read of the course record.
+
+**For edits through the API, it is now settled: they bump nothing.** On
+2026-10-30 a content-only `PUT /v1/lessons/{id}/content-items/{id}` on the
+throwaway "Claude test course" landed (both v1 and v2 read the new HTML back)
+and moved no timestamp at all: not the course's `modified_at` in v1 or v2,
+not the lesson's v2 `modified_at`, and v2's `GET /lessons/?filter[updated_since]=`
+did not list the lesson. The content was then restored byte for byte. v2
+content items carry no timestamp of their own. So v2's lesson timestamps,
+new as they are, cannot drive an incremental pull either: a `push` from
+another checkout is invisible to them. **Dashboard edits are still
+untested**, and need someone to edit a test lesson in the UI.
 
 The current design is safe without an answer, because **a skipped course is
 never written to** — the worst a wrong skip does is not report drift, and
