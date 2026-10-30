@@ -123,9 +123,23 @@ Observed on 2026-10-30:
   replaces the array, so `group:domains` re-reads it after the prompt and
   aborts if it moved, then reads back. v1 has a true add/remove
   (`PATCH /v1/groups/{id}/email-domain-rules` with `add`/`remove`), but it
-  needs the v1 key, which is what v2 is here to avoid. **The v2 write itself
-  has not been run against Skilljar yet**: test it on a throwaway group
-  before relying on it, the same way the settings writes were.
+  needs the v1 key, which is what v2 is here to avoid.
+
+Established on 2026-10-30 against a throwaway group created with
+`POST /v2/groups/` and deleted afterwards, with every other group
+snapshotted before and diffed after (none moved, `modified_at` included):
+
+- A PATCH of only `rule_email_domains` changed that field and `modified_at`
+  and nothing else. `group:domains` added a domain to an empty list, swapped
+  one for another, and removed the last one; each read back as written.
+- **The list can be cleared**: removing the last domain reads back as `[]`,
+  not an error, unlike the course fields that cannot be blanked.
+- The create response's attributes omit `category_id`; a read returns it as
+  `null`. Compare reads with reads.
+- `DELETE /v2/groups/` with `{ data: [{ type: 'groups', id }] }` returned 200
+  with `status: deleted`, then 404 on read. It is a **hard, batch delete**
+  that cascades memberships and visibility, so a script that calls it must
+  only ever pass an id it created itself.
 
 ## lessons-meta.json: `content_items` means files
 
