@@ -119,6 +119,13 @@ Observed on 2026-10-30:
   `/groups/{id}/relationships/students/`, only POST and DELETE, which take
   student ids, not emails. Hence the per-email `GET /students/?filter[email]=`.
 - v2 ids are not v1 ids. Do not pass an id from a v1 read to a v2 call.
+- **A group's `rule_email_domains` is written whole.** `PATCH /groups/`
+  replaces the array, so `group:domains` re-reads it after the prompt and
+  aborts if it moved, then reads back. v1 has a true add/remove
+  (`PATCH /v1/groups/{id}/email-domain-rules` with `add`/`remove`), but it
+  needs the v1 key, which is what v2 is here to avoid. **The v2 write itself
+  has not been run against Skilljar yet**: test it on a throwaway group
+  before relying on it, the same way the settings writes were.
 
 ## lessons-meta.json: `content_items` means files
 

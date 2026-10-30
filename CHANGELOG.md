@@ -32,6 +32,12 @@ and version scheme in `CLAUDE.md`.
   batches of 100, stops at the first batch that fails, and writes an audit
   CSV.
 
+- `group:domains` lists a group's auto-add email domains, and adds or
+  removes them, through the v2 API. Since v2 replaces the whole list, a
+  confirmed run re-reads it before writing and aborts if it changed, then
+  reads it back. Free-mail domains are refused unless
+  `--allow-public-domain` is passed.
+
 - `npm run push:course-settings` pushes course-level settings from each
   course's `details.json`. Today that is only `enforce_sequential_navigation`
   ("Enforce sequential navigation" in the dashboard). A dry run is one request
