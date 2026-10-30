@@ -141,6 +141,19 @@ snapshotted before and diffed after (none moved, `modified_at` included):
   that cascades memberships and visibility, so a script that calls it must
   only ever pass an id it created itself.
 
+`group:add` and `group:remove` were tested the same way, the same day, with
+one real account (the maintainer's) in a throwaway group:
+
+- **Adding an existing member returns the original membership**: same
+  membership id, same `created_at`, status `succeeded`. That is the only
+  signal that a student was already in the group, so `alreadyMemberCutoff`
+  compares `created_at` with the response's `Date` header (Skilljar's clock,
+  in whole seconds) less the request time and 2s of slack. A membership made
+  within ~3s of the run still reads as new; without the header the cutoff
+  falls back to 5 minutes on the local clock.
+- **Removing a non-member also returns `deleted`**, with the student's id,
+  so a remove cannot report who was not in the group.
+
 ## lessons-meta.json: `content_items` means files
 
 Every entry in a lesson's `content_items` names an HTML file, and every

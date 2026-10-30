@@ -21,6 +21,7 @@ import {
   ACTIONS,
   AUDIT_FIELDS,
   MEMBERSHIP_BATCH_SIZE,
+  alreadyMemberCutoff,
   chunk,
   classifyLookups,
   membershipBody,
@@ -195,7 +196,8 @@ export async function runMembership(action, argv, {
       const url = `/groups/${encodeURIComponent(group.id)}/relationships/students/`;
       const body = membershipBody(batch.map((s) => s.id));
       const res = method === 'post' ? await client.post(url, body) : await client.delete(url, { data: body });
-      rows.push(...readBatchResult(action, batch, res.data, sentAt));
+      const cutoff = alreadyMemberCutoff({ sentAt, receivedAt: now(), serverDate: res.headers?.date });
+      rows.push(...readBatchResult(action, batch, res.data, cutoff));
     } catch (err) {
       stopped = describe(err);
       rows.push(...batch.map((s) => ({ email: s.email, student_id: s.id, result: 'failed', error: stopped })));
