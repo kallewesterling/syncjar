@@ -29,10 +29,13 @@ export const V2_COMMAND_SCOPES = {
     optional: [{ flags: ['--domain', '--by-domain'], scopes: ['domains:read'] }]
   },
   'check:drift': { scopes: ['audit:read', 'lessons:read', 'courses:read'] },
-  'export:enrollments': { scopes: ['enrollments:read', 'published-courses:read', 'courses:read', 'students:read'] },
-  'enroll:add': { scopes: ['enrollments:read', 'enrollments:write', 'published-courses:read', 'students:read'] },
-  'enroll:remove': { scopes: ['enrollments:read', 'enrollments:write', 'published-courses:read', 'students:read'] },
-  'check:visibility': { scopes: ['student-groups:read', 'published-courses:read', 'paths:read', 'courses:read'] }
+  'export:enrollments': {
+    scopes: ['enrollments:read', 'published-courses:read', 'courses:read', 'students:read', 'analytics:read'],
+    optional: [{ flags: ['--domain'], scopes: ['domains:read'] }]
+  },
+  'enroll:add': { scopes: ['courses:read', 'published-courses:read', 'domains:read', 'students:read', 'enrollments:read', 'enrollments:write'] },
+  'enroll:remove': { scopes: ['courses:read', 'published-courses:read', 'domains:read', 'students:read', 'enrollments:read', 'enrollments:write'] },
+  'check:visibility': { scopes: ['domains:read', 'student-groups:read', 'published-courses:read', 'paths:read'] }
 };
 
 /**
