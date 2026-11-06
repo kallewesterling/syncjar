@@ -25,7 +25,7 @@
  */
 import fs from 'fs-extra';
 import path from 'path';
-import { repoRoot } from '#lib/paths.mjs';
+import { workRoot } from '#lib/paths.mjs';
 import chalk from 'chalk';
 import inquirer from 'inquirer';
 import yargs from 'yargs';
@@ -71,7 +71,7 @@ const argv = yargs(hideBin(process.argv))
   .argv;
 
 const quizContentPath = process.env.QUIZ_CONTENT_PATH
-  || path.join(repoRoot, 'local-skilljar-quizzes');
+  || path.join(workRoot, 'local-skilljar-quizzes');
 
 const READ_CONCURRENCY = 6;
 let requests = 0;

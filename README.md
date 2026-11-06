@@ -47,6 +47,8 @@ It's your local **Skilljar workspace**: Write content, test changes, see diffs, 
 ├── local-skilljar-quizzes/
 │   └── quiz-<quiz_id>.json          # One quiz: settings, questions, answers
 │
+├── bin/syncjar.mjs                  # The global `syncjar` command
+│
 ├── public/
 │   ├── courses/                     # Local preview output
 │   └── data/
@@ -96,6 +98,44 @@ SKILLJAR_API_KEY=sk-live-abc123
 ```bash
 npm run build:preview
 ```
+
+### Installing the `syncjar` command
+
+To run Syncjar from any directory without a clone, install it globally from
+GitHub:
+
+```bash
+npm install --global github:kallewesterling/syncjar#main
+```
+
+Every npm script below is then a subcommand, taking the same options:
+
+```bash
+syncjar help                              # list commands
+syncjar export:students --out roster.csv  # = npm run export:students -- --out roster.csv
+syncjar update                            # reinstall the latest main from GitHub
+syncjar update --ref dev                  # or any branch, tag or commit
+```
+
+`syncjar update` first reads `package.json` at the ref it is about to
+install. It refuses a ref that doesn't provide the `syncjar` command, because
+installing one would remove the command and leave nothing to update from.
+From a clone, including one linked with `npm link`, it refuses outright and
+asks you to `git pull` instead.
+
+Credentials come from a `.env` in the current directory, then from
+`~/.config/syncjar/.env` (`$XDG_CONFIG_HOME/syncjar/.env`, or
+`%APPDATA%\syncjar\.env` on Windows). A variable set in the shell wins over
+both. Put the user-level file somewhere only you can read:
+
+```bash
+mkdir -p ~/.config/syncjar && touch ~/.config/syncjar/.env && chmod 600 ~/.config/syncjar/.env
+```
+
+Outside a clone, default outputs such as `public/data/` and `local-skilljar/`
+are written under the current directory, never into the install, which the
+next `syncjar update` replaces. The preview commands (`serve`,
+`generate:courses`, `build:preview`, `check:links`) only run from a clone.
 
 ## 📋 Available Commands
 

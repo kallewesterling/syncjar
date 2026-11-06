@@ -13,7 +13,7 @@ import path from 'path';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import dotenv from 'dotenv';
-import { repoRoot } from '#lib/paths.mjs';
+import { workRoot } from '#lib/paths.mjs';
 import { createSkilljarClient, failCleanly } from '#lib/skilljar/client.mjs';
 import { fetchLessons } from '#lib/skilljar/fetch.mjs';
 import { mapWithConcurrency } from '#lib/concurrency.mjs';
@@ -34,7 +34,7 @@ const argv = yargs(hideBin(process.argv))
   .strict()
   .argv;
 
-const coursesDir = process.env.COURSE_CONTENT_PATH || path.join(repoRoot, 'local-skilljar');
+const coursesDir = process.env.COURSE_CONTENT_PATH || path.join(workRoot, 'local-skilljar');
 
 async function readCourses() {
   const out = [];

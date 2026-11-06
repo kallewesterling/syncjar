@@ -1,7 +1,7 @@
 import fs from 'fs-extra';
 import path from 'path';
 import { pathToFileURL } from 'url';
-import { repoRoot } from '#lib/paths.mjs';
+import { workRoot } from '#lib/paths.mjs';
 import dotenv from 'dotenv';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
@@ -26,7 +26,7 @@ const argv = yargs(hideBin(process.argv))
 let _client;
 const client = () => (_client ??= createSkilljarClient());
 
-const outputDir = path.join(repoRoot, 'public', 'data');
+const outputDir = path.join(workRoot, 'public', 'data');
 const userListPath = path.join(outputDir, 'users.json');
 const perUserDir = path.join(outputDir, 'user-progress');
 const mergedPath = path.join(outputDir, 'user-progress.json');

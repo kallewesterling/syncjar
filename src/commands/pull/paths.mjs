@@ -49,7 +49,7 @@
 import fs from 'fs-extra';
 import path from 'path';
 import { pathToFileURL } from 'url';
-import { repoRoot } from '#lib/paths.mjs';
+import { workRoot } from '#lib/paths.mjs';
 import dotenv from 'dotenv';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
@@ -65,7 +65,7 @@ dotenv.config();
 // directories — `readCourseDirIndex` identifies a directory by the `id` in its
 // details.json, and a path id sitting in that tree would be indistinguishable
 // from a course id.
-export const defaultContentPath = path.join(repoRoot, 'local-skilljar-paths');
+export const defaultContentPath = path.join(workRoot, 'local-skilljar-paths');
 
 /**
  * Directory-name and title matching for --path.

@@ -11,7 +11,7 @@ import path from 'path';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import dotenv from 'dotenv';
-import { repoRoot } from '#lib/paths.mjs';
+import { workRoot } from '#lib/paths.mjs';
 import { createSkilljarClient, failCleanly } from '#lib/skilljar/client.mjs';
 import { fetchPublishedCourses, fetchPublishedPaths } from '#lib/skilljar/fetch.mjs';
 import { readDirFiles } from '#lib/content/read-dirs.mjs';
@@ -35,8 +35,8 @@ const argv = yargs(hideBin(process.argv))
   .strict()
   .argv;
 
-const coursesDir = process.env.COURSE_CONTENT_PATH || path.join(repoRoot, 'local-skilljar');
-const pathsDir = process.env.PATH_CONTENT_PATH || path.join(repoRoot, 'local-skilljar-paths');
+const coursesDir = process.env.COURSE_CONTENT_PATH || path.join(workRoot, 'local-skilljar');
+const pathsDir = process.env.PATH_CONTENT_PATH || path.join(workRoot, 'local-skilljar-paths');
 
 (async () => {
   if (!guardBranch({ argv, command: 'push:published-settings', dir: coursesDir })) return;

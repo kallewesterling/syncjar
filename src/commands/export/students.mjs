@@ -26,7 +26,7 @@
 
 import fs from 'fs-extra';
 import path from 'path';
-import { repoRoot } from '#lib/paths.mjs';
+import { workRoot } from '#lib/paths.mjs';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import { parse } from 'json2csv';
@@ -41,7 +41,7 @@ const argv = yargs(hideBin(process.argv))
   .option('out', {
     type: 'string',
     describe: 'Output CSV path',
-    default: path.join(repoRoot, 'public', 'data', 'students.csv')
+    default: path.join(workRoot, 'public', 'data', 'students.csv')
   })
   .option('page-size', { type: 'number', default: 100 })
   .help()

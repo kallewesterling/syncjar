@@ -145,9 +145,30 @@ The directory says which kind of file you are looking at:
   Import it as `#lib/<path>.mjs` (the `"imports"` map in `package.json`), from
   commands and tests alike, so a file's depth never shows up in its imports.
 
-Resolve default paths such as `public/data/` against `repoRoot` from
+Resolve default paths such as `public/data/` against `workRoot` from
 `#lib/paths.mjs`, not `path.join(__dirname, '..')`, which silently points
-somewhere else as soon as a command moves to a different depth.
+somewhere else as soon as a command moves to a different depth. `workRoot`
+is the clone when running from one, and the current directory under a
+global `npm install`, whose directory `syncjar update` replaces — so
+anything written there, student exports included, would vanish on the next
+update. `repoRoot` is the install itself; only the preview commands, which
+serve its tracked `public/` files, use it, and `bin/syncjar.mjs` refuses to
+run them outside a clone (`CHECKOUT_ONLY` in `#lib/cli.mjs`).
+
+## The `syncjar` command
+
+`bin/syncjar.mjs` runs npm scripts as subcommands, reading the list from
+`package.json` (`commandTable` in `#lib/cli.mjs`), so a new script needs no
+CLI change. Each command runs as a child process with the user's options
+passed through.
+
+`syncjar update` installs `github:<repo>#<ref>` with `npm install --global`
+(default ref `main`). It first fetches `package.json` at that ref and refuses
+if it has no `bin.syncjar`. That was observed in a throwaway prefix:
+installing `dev` from before the CLI existed removed the `syncjar` command
+entirely, which leaves no `syncjar update` to recover with. So the default
+`main` only becomes usable once a release containing the CLI is tagged; until
+then, install and update with `--ref` pointing at a branch that has it.
 
 Where a command must be importable — `sync/users.mjs` is, for its merge
 logic, and `pull/paths.mjs` for its matching and comparison helpers — guard

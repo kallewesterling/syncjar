@@ -16,6 +16,14 @@ and version scheme in `CLAUDE.md`.
 
 ### Added
 
+- A global `syncjar` command (`npm install --global
+  github:kallewesterling/syncjar#main`). Every npm script is a subcommand with
+  the same options, so `syncjar push:quizzes --dry-run` is `npm run
+  push:quizzes -- --dry-run`. `syncjar update [--ref <ref>]` reinstalls from
+  GitHub, and refuses a ref whose `package.json` doesn't provide the command.
+  Credentials are read from `.env` in the current directory, then
+  `~/.config/syncjar/.env`.
+
 - `npm run push:course-settings` pushes course-level settings from each
   course's `details.json`. Today that is only `enforce_sequential_navigation`
   ("Enforce sequential navigation" in the dashboard). A dry run is one request
@@ -78,6 +86,10 @@ and version scheme in `CLAUDE.md`.
 
 ### Changed
 
+- When Syncjar is not running from a clone, default outputs and content trees
+  (`public/data/`, `local-skilljar/`, `local-skilljar-paths/`,
+  `local-skilljar-quizzes/`) resolve against the current directory instead of
+  the install, which `syncjar update` replaces. From a clone nothing moves.
 - `pull:slugs` and `pull:paths` also record `strict_enforce_group_visibility`
   in each `published.json`. The first pull after upgrading rewrites every
   `published.json` once to add it.

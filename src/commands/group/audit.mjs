@@ -25,7 +25,7 @@
 
 import fs from 'fs-extra';
 import path from 'path';
-import { repoRoot } from '#lib/paths.mjs';
+import { workRoot } from '#lib/paths.mjs';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import chalk from 'chalk';
@@ -41,7 +41,7 @@ const argv = yargs(hideBin(process.argv))
   .help()
   .argv;
 
-const out = argv.out ?? path.join(repoRoot, 'public', 'data', `group-audit-${argv.group}.csv`);
+const out = argv.out ?? path.join(workRoot, 'public', 'data', `group-audit-${argv.group}.csv`);
 
 // --- roster ---------------------------------------------------------------
 

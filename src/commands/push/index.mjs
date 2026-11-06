@@ -15,7 +15,7 @@
  */
 import fs from 'fs-extra';
 import path from 'path';
-import { repoRoot } from '#lib/paths.mjs';
+import { workRoot } from '#lib/paths.mjs';
 import chalk from 'chalk';
 import inquirer from 'inquirer';
 import { hideBin } from 'yargs/helpers';
@@ -361,7 +361,7 @@ async function applyContentAction(action) {
 // ---------------------------------------------------------------------------
 
 (async () => {
-  const coursesDir = process.env.COURSE_CONTENT_PATH || path.join(repoRoot, 'local-skilljar');
+  const coursesDir = process.env.COURSE_CONTENT_PATH || path.join(workRoot, 'local-skilljar');
 
   // Guard the content repo's branch, not syncjar's — the stale content that
   // would overwrite Skilljar lives in coursesDir. --dry-run and --diff-only
