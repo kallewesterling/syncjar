@@ -173,21 +173,6 @@ Reads, observed on 2026-10-30 with an all-`:read` client:
   the unfiltered figure across all 74 courses. `rating_count` was 0 on every
   course: the dashboard's lesson rating blocks are not these ratings.
 
-Reads, observed on 2026-10-30 with an all-`:read` client:
-
-- **`GET /lessons/{id}` carries `content_items`, which the spec omits**:
-  every item with `id`, `type`, `header` and, for HTML, the full
-  `content_html`. The list `GET /lessons/` has `content_html: null` for
-  every `MODULAR` lesson, as v1's does, so content still costs one request
-  per lesson, but one per lesson rather than v1's one per item. All 698
-  lessons read in 47s at concurrency 6, and every HTML item matched v1's
-  byte for byte.
-- **Analytics `filter[domains]` takes domain names, not ids.** A domain id
-  returns zeros rather than an error, so `export:analytics` checks names
-  against `GET /domains/` first. Per-domain enrollments summed exactly to
-  the unfiltered figure across all 74 courses. `rating_count` was 0 on every
-  course: the dashboard's lesson rating blocks are not these ratings.
-
 `group:add` and `group:remove` were tested the same way, the same day, with
 one real account (the maintainer's) in a throwaway group:
 
