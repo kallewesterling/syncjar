@@ -16,6 +16,13 @@ and version scheme in `CLAUDE.md`.
 
 ### Added
 
+- `whoami` shows which API v2 client is configured, its organisation, token
+  lifetime and scopes, read from the token itself, and which v2 commands it
+  can run, naming the scopes it is missing for the rest. Commands that need
+  the v1 key are listed with whether `SKILLJAR_API_KEY` is set. `--json`
+  prints the same report for scripts. The scopes each command needs live in
+  one table, and a test fails if a v2 command is left out of it.
+
 - A global `syncjar` command (`npm install --global
   github:kallewesterling/syncjar#main`). Every npm script is a subcommand with
   the same options, so `syncjar push:quizzes --dry-run` is `npm run

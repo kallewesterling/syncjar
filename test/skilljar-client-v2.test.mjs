@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 
-import { createSkilljarV2Client, listAllV2, nextCursor } from '#lib/skilljar/client-v2.mjs';
+import { createSkilljarV2Client, decodeTokenClaims, fetchAccessToken, listAllV2, nextCursor } from '#lib/skilljar/client-v2.mjs';
 import { errorDetail } from '#lib/skilljar/client.mjs';
 
 const CLIENT_ID = 'client-notreal';
@@ -132,6 +132,37 @@ test('list reads follow the cursor in links.next until there is none', async (t)
 
   const all = await listAllV2(client, '/students/', { 'filter[is_inactive]': false });
   assert.deepEqual(all.map((r) => r.id), ['a', 'b', 'c', 'd', 'e']);
+});
+
+const jwt = (payload) => ['{"alg":"RS256"}', JSON.stringify(payload), 'sig']
+  .map((p, i) => (i === 2 ? p : Buffer.from(p).toString('base64url'))).join('.');
+
+test('fetchAccessToken makes one token request and returns the token and its lifetime', async (t) => {
+  const token = jwt({ scopes: ['courses:read'] });
+  const api = await fakeApi({ token: () => [200, { access_token: token, expires_in: 900, token_type: 'Bearer' }] });
+  t.after(api.close);
+
+  assert.deepEqual(await fetchAccessToken({ env, baseURL: api.baseURL }), { accessToken: token, expiresIn: 900 });
+  assert.equal(api.requests.length, 1);
+  assert.throws(() => fetchAccessToken({ env: {} }), /not set/);
+});
+
+test('a failed token request rejects without the client secret', async (t) => {
+  const api = await fakeApi({ token: () => [401, { error: 'invalid_client', error_description: 'Client is inactive.' }] });
+  t.after(api.close);
+  const err = await fetchAccessToken({ env, baseURL: api.baseURL }).catch((e) => e);
+  assert.equal(err.response?.status, 401);
+  assert.equal(errorDetail(err), 'invalid_client: Client is inactive.');
+  assert.equal(err.config, undefined);
+  assert.doesNotMatch(JSON.stringify(err, Object.getOwnPropertyNames(err)) + String(err.stack), new RegExp(CLIENT_SECRET));
+});
+
+test('decodeTokenClaims reads a JWT payload, and its errors do not echo the token', () => {
+  const claims = { client_id: 'c', organization_id: 'o', scopes: ['a:read'], iat: 1, exp: 901 };
+  assert.deepEqual(decodeTokenClaims(jwt(claims)), claims);
+  for (const bad of ['not-a-jwt-secretish', 'a.!!!secretish.c', `a.${Buffer.from('[1]').toString('base64url')}.c`, undefined]) {
+    assert.throws(() => decodeTokenClaims(bad), (err) => !/secretish/.test(err.message));
+  }
 });
 
 test('nextCursor reads relative and absolute links, and null means the last page', () => {

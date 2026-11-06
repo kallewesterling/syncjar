@@ -169,6 +169,7 @@ next `syncjar update` replaces. The preview commands (`serve`,
 | `npm run group:add -- --group-name <name> --in <csv>` | Add existing students to a group, by email (API v2; dry run unless `--confirm`) |
 | `npm run group:remove -- --group-name <name> --in <csv>` | Remove students from a group, by email (API v2; dry run unless `--confirm`) |
 | `npm run group:domains -- --group-name <name> [--add <domain>] [--remove <domain>]` | List or change a group's auto-add email domains (API v2; dry run unless `--confirm`) |
+| `npm run whoami -- [--json]` | Show the API v2 client's scopes and which commands it can run (read-only) |
 | `npm test` | Run the unit tests |
 
 ### Group membership (API v2)
@@ -247,6 +248,31 @@ stops if it changed since the plan was shown, writes the merged list, and
 reads it back. It prints the previous list afterwards, so a mistake can be
 undone by hand. Free-mail domains such as `gmail.com` are refused unless
 you pass `--allow-public-domain`.
+
+### Which commands can this client run?
+
+A v2 client that lacks a scope gets a 403 from the first call that needs
+it, which can be partway through a run. `whoami` checks up front: it
+exchanges `SKILLJAR_CLIENT_ID` and `SKILLJAR_CLIENT_SECRET` for a token,
+reads the client id, organisation, token lifetime and scopes out of it, and
+lists every v2 command as runnable or with the scopes it is missing. The
+commands that need `SKILLJAR_API_KEY` instead are listed after, with
+whether it is set.
+
+```bash
+syncjar whoami          # for people
+syncjar whoami --json   # for scripts
+```
+
+The scope names come from the token itself, because Skilljar's token
+response does not include them. `whoami` makes no request beyond the token
+exchange and never prints the token or the secret. A client shown as able
+to run the group commands is not limited to membership:
+`student-groups:write` also renames and deletes groups and changes their
+domains and course visibility (see [Group membership](#group-membership-api-v2)).
+
+The scopes each command needs are listed in `src/lib/skilljar/v2-scopes.mjs`,
+and the tests fail if a v2 command is missing from it.
 
 ## 🗃 Course Directory Names
 
