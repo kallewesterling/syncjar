@@ -32,6 +32,14 @@ and version scheme in `CLAUDE.md`.
   push` stops. Read-only, and it leaves dashboard usernames out unless
   `--show-actors` is passed in a terminal.
 
+- `check:visibility` reports which student groups can see which published
+  courses and paths, per domain, through the v2 API. It says in plain words
+  what each restricted record's settings do, lists what each group unlocks,
+  and flags likely mistakes: overrides on unpublished or deleted courses,
+  records nobody can see, paths whose courses an audience cannot see, and
+  restricted courses inside more widely visible paths. `--json` prints the
+  model and `--out` writes a flat CSV. Read-only.
+
 - A global `syncjar` command (`npm install --global
   github:kallewesterling/syncjar#main`). Every npm script is a subcommand with
   the same options, so `syncjar push:quizzes --dry-run` is `npm run
