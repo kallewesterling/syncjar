@@ -188,6 +188,30 @@ Reads, observed on 2026-10-30 with an all-`:read` client:
   the unfiltered figure across all 74 courses. `rating_count` was 0 on every
   course: the dashboard's lesson rating blocks are not these ratings.
 
+Enrollments, observed on 2026-11-06 with the same all-`:read` client, for
+`export:enrollments`:
+
+- **An enrollment points at a published course, not a course.** Its
+  relationship is `published-course`, and `filter[course.id]` takes the
+  *course* id: a published-course id returns nothing, not an error. Each
+  row also carries `domain_name`, so the domain needs no extra read; the
+  course needs `GET /published-courses/`, whose records carry
+  `relationships.course`, without any `include`.
+- **`include=student` lists each student once per page**, however many of
+  the page's enrollments are theirs, so join rows to students by id.
+  `listAllV2` keeps only `data`; the export pages with its own reader that
+  keeps `included`. Whether `include=student` needs `students:read` as well
+  as `enrollments:read` is **untested**: this client has every scope.
+- **There is no filter by email domain.** `filter[student.email]` is a
+  whole address (the spec says case-insensitive), so a partner report
+  filters the included emails locally.
+- **The rows reconcile exactly with analytics.** A full sweep, 11,608
+  enrollments in 95s at 100 a page, matched
+  `GET /v2/analytics/courses/{id}` on enrollments, completions and
+  certificates for all 74 courses, with the list's default of active and
+  inactive enrollments alike. Every enrollment's published course was in
+  the published-course list.
+
 `group:add` and `group:remove` were tested the same way, the same day, with
 one real account (the maintainer's) in a throwaway group:
 

@@ -48,7 +48,8 @@
     "group:remove": "node src/commands/group/remove.mjs",
     "group:domains": "node src/commands/group/domains.mjs",
     "export:analytics": "node src/commands/export/analytics.mjs",
-    "export:analytics": "node src/commands/export/analytics.mjs"
+    "export:analytics": "node src/commands/export/analytics.mjs",
+    "export:enrollments": "node src/commands/export/enrollments.mjs"
   },
   "author": "",
   "license": "MIT",

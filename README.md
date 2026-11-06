@@ -162,6 +162,7 @@ next `syncjar update` replaces. The preview commands (`serve`,
 | `npm run export:students` | Export the flat Skilljar student list to CSV |
 | `npm run export:analytics -- [--by-domain]` | Export each course's enrollments, completions and certificates to CSV, optionally per domain (API v2) |
 | `npm run export:analytics -- [--by-domain]` | Export each course's enrollments, completions and certificates to CSV, optionally per domain (API v2) |
+| `npm run export:enrollments -- [--course <q>] [--email-domain <d>]` | Export one row per enrollment, with student, progress and certificate, to CSV (API v2) |
 | `npm run check:links` | Check for broken links in course content |
 | `npm run check:membership -- --group <id>` | Report whether users are still in a student group (read-only) |
 | `npm run sync:users` | Sync user data from Skilljar |
@@ -242,6 +243,37 @@ syncjar export:analytics --domain courses.example.com    # plus one domain only
 The figures are aggregates; there is nothing per student, lesson or quiz.
 Unlike `export:metrics`, it needs no `sync:users` first. A per-domain
 run makes one request per course per domain, so it takes about a minute.
+
+### Enrollments (API v2)
+
+`export:enrollments` writes one row per enrollment to
+`public/data/enrollments.csv`: course, Skilljar domain, the student's email
+and name, when they enrolled and completed, progress and success status,
+score, certificate, source (self-enrolled, purchased or assigned) and
+whether the enrollment is active. It needs `enrollments:read`,
+`published-courses:read` and `courses:read`, `domains:read` for `--domain`,
+and `analytics:read` for the cross-check below. Whether it also needs
+`students:read` for the student columns is untested.
+
+```bash
+syncjar export:enrollments                                          # every enrollment
+syncjar export:enrollments --course "first build" --email-domain example.com
+syncjar export:enrollments --domain courses.example.com --completed-only --since 2026-07-01
+syncjar export:enrollments --email someone@example.com --include-feedback
+```
+
+`--course` matches an id or part of a title, as `pull --course` does, and
+`--course`, `--domain`, `--email` and `--email-domain` repeat. `--since` is
+the enrolment date, in UTC. `--email-domain` matches the domain exactly:
+`example.com` does not include `eu.example.com`, so name each one wanted.
+Rating and the free-text feedback are left out unless `--include-feedback`.
+
+When the export is not narrowed by student or date, its counts per course
+are compared with the analytics summary, and any difference is reported;
+`--no-check` skips that. Every read happens before the file is written, and
+a failed one stops the export. The whole organisation takes about a
+minute and a half. The file holds names and addresses, so delete it when
+you are done.
 
 ### Auto-add email domains
 

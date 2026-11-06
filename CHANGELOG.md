@@ -42,6 +42,15 @@ and version scheme in `CLAUDE.md`.
   a row per domain on request. Domain names are checked first, since
   Skilljar's filter returns zeros for one it does not know.
 
+- `export:enrollments` exports one row per enrollment through the v2 API:
+  course, domain, student, dates, progress, score, certificate and source,
+  to `public/data/enrollments.csv`. It narrows by course, Skilljar domain,
+  student email, completion and enrolment date on the server, and by email
+  domain (`--email-domain`, exact, no subdomains) locally, since the API
+  cannot. Rating and feedback text are left out unless `--include-feedback`.
+  An unfiltered or domain-filtered run is cross-checked against the
+  analytics summary, and any failed read stops it before anything is written.
+
 - `group:domains` lists a group's auto-add email domains, and adds or
   removes them, through the v2 API. Since v2 replaces the whole list, a
   confirmed run re-reads it before writing and aborts if it changed, then
