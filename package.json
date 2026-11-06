@@ -47,7 +47,6 @@
     "group:add": "node src/commands/group/add.mjs",
     "group:remove": "node src/commands/group/remove.mjs",
     "group:domains": "node src/commands/group/domains.mjs",
-    "export:analytics": "node src/commands/export/analytics.mjs",
     "export:analytics": "node src/commands/export/analytics.mjs"
   },
   "author": "",
