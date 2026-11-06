@@ -106,11 +106,23 @@ the v1 key. `SKILLJAR_CLIENT_ID` and `SKILLJAR_CLIENT_SECRET` are exchanged at
 `POST /v2/auth/token` for a JWT that lasts 900 seconds, and every operation
 needs a named scope on that client. A client can therefore be issued for one
 job, which is why `group:add` and `group:remove` use v2: the partner team can
-hold a client that changes group membership and nothing else.
+hold a client that cannot touch content, enrollments or accounts.
+
+**`student-groups:write` is not membership-only.** It also covers
+`POST`, `PATCH` and `DELETE /groups/` (create, rename, rewrite
+`rule_email_domains`, hard batch delete) and the group's
+`published-course-visibility` writes. So the partner client can do all of
+that by calling the API directly; only Syncjar's own commands limit it.
+Say so when handing one out, rather than calling it membership-only.
+
+**A token names its scopes**, even though the token response does not: the
+JWT's payload has a `scopes` array (with `client_id`, `organization_id`,
+`exp`). Decoding it locally needs no extra scope. Print scope names only,
+never the token.
 
 Observed on 2026-10-30:
 
-- **The token response carries no `scope`**, so a missing scope only shows
+- **The token response carries no `scope`** (the JWT does; see above), so a missing scope only shows
   up as a 403 (`permission_denied`) on the call that needs it. A client with
   `student-groups:*` but not `students:read` reads groups and then fails the
   email lookup.

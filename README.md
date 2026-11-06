@@ -175,8 +175,12 @@ next `syncjar update` replaces. The preview commands (`serve`,
 `group:add` and `group:remove` use Skilljar's v2 API, not the v1 key. They
 need an OAuth client with exactly three scopes: `student-groups:read`,
 `student-groups:write` and `students:read`, the last for looking students up
-by email. Such a client can change group membership and nothing else, so it
-is the one to hand to someone who should not hold the v1 key:
+by email. Such a client cannot touch content, enrollments or accounts, so it
+is the one to hand to someone who should not hold the v1 key. It is broader
+than membership, though: `student-groups:write` also renames groups, rewrites
+their auto-add domains, changes which courses they can see, and deletes them.
+Syncjar's commands do none of that except `group:domains`, but whoever holds
+the credentials can call the API directly.
 
 ```env
 SKILLJAR_CLIENT_ID=...
