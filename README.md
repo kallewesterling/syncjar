@@ -153,6 +153,7 @@ next `syncjar update` replaces. The preview commands (`serve`,
 | `npm run push:lesson-settings` | Push lesson `optional`, description and tooltip from `lessons-meta.json` |
 | `npm run push:published-settings` | Push per-domain `hidden` and group visibility from `published.json` |
 | `npm run check:settings` | Report courses and paths whose settings differ from the rest (read-only) |
+| `npm run check:drift -- [--since <date or ref>] [--course <query>] [--json]` | List lessons and courses edited in the Skilljar dashboard since the last pull; exits 2 if any were (read-only, API v2) |
 | `npm run generate:courses` | Regenerate the local preview index |
 | `npm run build:preview` | Pull + generate (full refresh) |
 | `npm run serve` | Start the local preview server at http://localhost:3000 |
@@ -585,6 +586,52 @@ npm run check:settings -- --fail-on-outliers             # exit 1 if anything is
 
 Domains come from `--domain`, then `SKILLJAR_DOMAINS`, then every domain the
 key can see.
+
+### Checking for dashboard edits before a push (API v2)
+
+`push` overwrites Skilljar with the local tree, so a lesson edited in the
+Skilljar dashboard since the last pull loses that edit. Timestamps cannot
+be relied on to catch this: an API content edit moves no `modified_at`, and
+whether a dashboard edit does has never been established.
+`check:drift` reads Skilljar's audit log instead, which records dashboard
+actions and not API writes, so a push's own writes never show up in it.
+
+```bash
+syncjar check:drift                         # since the last pull commit in the content repo
+syncjar check:drift --since 2026-10-01      # since a date (UTC)
+syncjar check:drift --since 59f6afa1        # since a commit in the content repo
+syncjar check:drift --course launchpad      # only local courses whose directory, id or title matches
+syncjar check:drift --json                  # machine-readable
+```
+
+By default it starts from the newest commit in `COURSE_CONTENT_PATH`'s repo
+whose subject says it synced or pulled from Skilljar (`chore(content): sync
+Skilljar → courses/`, `Sync Skilljar content`, `content: pull …`). It does not
+start from the newest commit of any kind: a local edit committed after a
+dashboard edit would move the start past that edit and hide it. A commit that
+recorded dashboard edits by hand under another subject makes them show up
+again; pass `--since <that commit>` to start after it.
+
+The report is grouped by course and then lesson, one line per kind of change
+with a count and a date range. Lesson content edits (`HTML`, `VIDEO`, `QUIZ`,
+downloads) are marked `!` and come first, because those are what a push
+destroys. Creations, deletions, reorders and publishes are marked `~`; titles,
+descriptions and flags `·`. Lessons and courses missing from the local tree are
+looked up, and reported as new upstream, never pulled, or deleted.
+
+Exit codes: `0` nothing was edited, `2` something was, `1` an error. So run it
+before a push, and stop if it exits 2:
+
+```bash
+syncjar check:drift && syncjar push
+```
+
+It needs an API client with `audit:read`, plus `lessons:read` and
+`courses:read`. It makes GET requests and runs `git log`, nothing else. The
+audit log names the dashboard user behind each event; the report leaves them
+out. `--show-actors` adds them in an interactive terminal only, and is refused
+with `--json` or when output is not a terminal, so they cannot end up in a CI
+log or a file.
 
 ## 🛠️ Example Workflows
 
