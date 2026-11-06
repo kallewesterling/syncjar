@@ -48,6 +48,17 @@ and version scheme in `CLAUDE.md`.
   batches of 100, stops at the first batch that fails, and writes an audit
   CSV.
 
+- `enroll:add` and `enroll:remove` enroll existing students in a course by
+  email, and deactivate those enrollments (`active: false`; nothing is
+  deleted), through the v2 API. A course published on more than one domain
+  needs `--domain`. Dry runs look up every email and its current enrollment
+  first, and skip students with no account, students already enrolled (or,
+  for a remove, not enrolled), and other cases whose effect is unknown.
+  `--confirm` asks for a typed confirmation, writes in batches of 100, reads
+  every enrollment back, and writes an audit CSV. **The write path has not
+  been tested against Skilljar yet**, so `--confirm` also needs
+  `SYNCJAR_ENROLL_WRITES=1` until it has; the README has the live test plan.
+
 - `export:analytics` exports each course's enrollments, completions,
   completion rate, certificates and ratings to CSV through the v2 API, with
   a row per domain on request. Domain names are checked first, since
