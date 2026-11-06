@@ -158,6 +158,74 @@ snapshotted before and diffed after (none moved, `modified_at` included):
   that cascades memberships and visibility, so a script that calls it must
   only ever pass an id it created itself.
 
+Reads, observed on 2026-10-30 with an all-`:read` client:
+
+- **`GET /lessons/{id}` carries `content_items`, which the spec omits**:
+  every item with `id`, `type`, `header` and, for HTML, the full
+  `content_html`. The list `GET /lessons/` has `content_html: null` for
+  every `MODULAR` lesson, as v1's does, so content still costs one request
+  per lesson, but one per lesson rather than v1's one per item. All 698
+  lessons read in 47s at concurrency 6, and every HTML item matched v1's
+  byte for byte.
+- **Analytics `filter[domains]` takes domain names, not ids.** A domain id
+  returns zeros rather than an error, so `export:analytics` checks names
+  against `GET /domains/` first. Per-domain enrollments summed exactly to
+  the unfiltered figure across all 74 courses. `rating_count` was 0 on every
+  course: the dashboard's lesson rating blocks are not these ratings.
+
+Enrollments, observed on 2026-11-06 with the same all-`:read` client, for
+`export:enrollments`:
+
+- **An enrollment points at a published course, not a course.** Its
+  relationship is `published-course`, and `filter[course.id]` takes the
+  *course* id: a published-course id returns nothing, not an error. Each
+  row also carries `domain_name`, so the domain needs no extra read; the
+  course needs `GET /published-courses/`, whose records carry
+  `relationships.course`, without any `include`.
+- **`include=student` lists each student once per page**, however many of
+  the page's enrollments are theirs, so join rows to students by id.
+  `listAllV2` keeps only `data`; the export pages with its own reader that
+  keeps `included`. Whether `include=student` needs `students:read` as well
+  as `enrollments:read` is **untested**: this client has every scope.
+- **There is no filter by email domain.** `filter[student.email]` is a
+  whole address (the spec says case-insensitive), so a partner report
+  filters the included emails locally.
+- **The rows reconcile exactly with analytics.** A full sweep, 11,608
+  enrollments in 95s at 100 a page, matched
+  `GET /v2/analytics/courses/{id}` on enrollments, completions and
+  certificates for all 74 courses, with the list's default of active and
+  inactive enrollments alike. Every enrollment's published course was in
+  the published-course list.
+
+Visibility, observed on 2026-11-06 with an all-`:read` client, for
+`check:visibility` (GETs only):
+
+- **The spec's model.** `is_hidden` takes a published course out of the
+  catalog except for allowed groups. A group's override is an allowlist row
+  (`is_visible: true`) or a blocklist row (`false`), so on a hidden course
+  only the allowlist matters and on a visible one only the blocklist. A
+  published path's `group-visibility` is one list whose meaning flips:
+  "allowed on a hidden path, blocked on a visible one".
+  `strict_enforce_group_visibility` is "block access for students the course
+  is not visible to", so it decides whether a direct link still works.
+  Without it, hiding only unlists. None of this has been tested by signing
+  in as a member and a non-member; it is the spec's wording.
+- **`visible_on_catalog` is not the inverse of `is_hidden`.** 106 of 132
+  published courses are neither hidden nor `visible_on_catalog`, and one is
+  both. What it tracks is unknown, so nothing relies on it.
+- **Overrides name published-course ids**, so they are per domain. Path
+  items name published-course ids too, not course ids.
+- **A deleted course can leave its published-course rows behind.**
+  `GET /published-courses/` returned five `live: false` rows with a
+  `…-unpublished-<unix time>` slug. For all five, `GET /courses/{id}` was a
+  404, so `include=course` returns no title for them. Whether the dashboard's
+  delete or its unpublish made them is unknown. Group overrides on them
+  stay: three rows still had some.
+- Every published course and path had `visibility_override_type: GROUP`, and
+  no path had group or category visibility, so `CATEGORY` semantics and path
+  group lists have no live example. `check:visibility` reports `CATEGORY` as
+  not modelled rather than guessing.
+
 `group:add` and `group:remove` were tested the same way, the same day, with
 one real account (the maintainer's) in a throwaway group:
 
@@ -322,11 +390,62 @@ trailing-newline churn from the pull's own writes, which `normalizeHtml`
 correctly calls unchanged.) Settling it needs a deliberate content-only push
 followed by a read of the course record.
 
+**For edits through the API, it is now settled: they bump nothing.** On
+2026-10-30 a content-only `PUT /v1/lessons/{id}/content-items/{id}` on the
+throwaway "Claude test course" landed (both v1 and v2 read the new HTML back)
+and moved no timestamp at all: not the course's `modified_at` in v1 or v2,
+not the lesson's v2 `modified_at`, and v2's `GET /lessons/?filter[updated_since]=`
+did not list the lesson. The content was then restored byte for byte. v2
+content items carry no timestamp of their own. So v2's lesson timestamps,
+new as they are, cannot drive an incremental pull either: a `push` from
+another checkout is invisible to them. **Dashboard edits are still
+untested**, and need someone to edit a test lesson in the UI.
+
 The current design is safe without an answer, because **a skipped course is
 never written to** — the worst a wrong skip does is not report drift, and
 `pull` is what reconciles drift anyway. Any future use of `modified_at` that
 decides to *write*, or to *not pull*, loses that property and needs the
 experiment run first.
+
+## The audit log is the drift signal (`check:drift`)
+
+`GET /v2/audit-events/` (scope `audit:read`) records dashboard actions and
+not API writes, so it answers what `modified_at` cannot: was anything edited
+in the dashboard since the last pull. `check:drift` reads it; the logic is in
+`src/lib/drift/`. Observed on 2026-11-06 with an all-`:read` client, counts
+and shapes only:
+
+- **History reaches back to at least 2023-12-01.** A window from 2023-06-01
+ returned nothing; one from 2023-12-01 had events at its first second, so
+ the true start is somewhere in between and untested.
+- **`channel` is null on every event before July 2025** and `"dashboard"`
+ after; every null-channel event still has a user id. Never filter on
+ `channel`: it drops a year of history. `client.name`, `request_id` and
+ `endpoint` were null on all 5,544 events read, consistent with API writes
+ not being logged.
+- **Target types contain spaces** (`dashboard user`, `lesson progress`,
+ `api v2 client`), and `section` is its own type. A section target id is a
+ lesson id: 28 of 30 section updates matched a `SECTION` lesson in
+ `lessons-meta.json`. So drift reads `lesson`, `section` and `course`.
+- **Lesson fields seen:** `HTML`, `VIDEO`, `QUIZ`, `title`,
+ `description_html`, `is_optional`, `downloadable_content`. Actions beyond
+ `update`: `create`, `delete`, `reorder`, `add`/`remove` (setting or clearing
+ a field, e.g. `add description_html`), `upload`, and on courses `publish`
+ and `clone`.
+- **A course deleted in the dashboard keeps its lessons readable**, as found
+ on 2026-09-29, and the log shows it: of 20 deleted courses with events
+ since 2025-01, 5 had lessons that `GET /v2/lessons/{id}` still returns with their
+ `course_id`. So a lesson that reads back is not proof its course exists;
+ `check:drift` reads the course too.
+- **A pull is identified by its commit subject**, since the nightly bot also
+ authors link-fix commits. The newest commit of any kind is the wrong start:
+ a local commit made after a dashboard edit would hide it. Subject matching
+ errs the safe way. `84b2791c` ("content: attach videos…", 2026-10-28)
+ recorded 22 dashboard video attachments by hand, so they still report as
+ drift from the sync before it.
+- A full read since 2025-01-01 is 8 windows × 3 types plus one GET per
+ lesson or course missing from the tree: 2,794 events, 15 to 85 seconds
+ across two runs.
 
 ## Settings writes
 

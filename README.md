@@ -153,6 +153,9 @@ next `syncjar update` replaces. The preview commands (`serve`,
 | `npm run push:lesson-settings` | Push lesson `optional`, description and tooltip from `lessons-meta.json` |
 | `npm run push:published-settings` | Push per-domain `hidden` and group visibility from `published.json` |
 | `npm run check:settings` | Report courses and paths whose settings differ from the rest (read-only) |
+| `npm run check:drift -- [--since <date or ref>] [--course <query>] [--json]` | List lessons and courses edited in the Skilljar dashboard since the last pull; exits 2 if any were (read-only, API v2) |
+
+| `npm run check:visibility -- [--group <name>] [--domain <name>]` | Report which groups can see which published courses and paths, per domain, and flag likely mistakes (read-only, API v2) |
 | `npm run generate:courses` | Regenerate the local preview index |
 | `npm run build:preview` | Pull + generate (full refresh) |
 | `npm run serve` | Start the local preview server at http://localhost:3000 |
@@ -160,6 +163,8 @@ next `syncjar update` replaces. The preview commands (`serve`,
 | `npm run export:users -- --internal-domain <domain>` | Export Skilljar users to CSV, flagging users at `<domain>` as internal (or set `SYNCJAR_INTERNAL_DOMAIN`) |
 | `npm run export:metrics` | Export course metrics to CSV |
 | `npm run export:students` | Export the flat Skilljar student list to CSV |
+| `npm run export:analytics -- [--by-domain]` | Export each course's enrollments, completions and certificates to CSV, optionally per domain (API v2) |
+| `npm run export:enrollments -- [--course <q>] [--email-domain <d>]` | Export one row per enrollment, with student, progress and certificate, to CSV (API v2) |
 | `npm run check:links` | Check for broken links in course content |
 | `npm run check:membership -- --group <id>` | Report whether users are still in a student group (read-only) |
 | `npm run sync:users` | Sync user data from Skilljar |
@@ -168,6 +173,10 @@ next `syncjar update` replaces. The preview commands (`serve`,
 | `npm run group:add -- --group-name <name> --in <csv>` | Add existing students to a group, by email (API v2; dry run unless `--confirm`) |
 | `npm run group:remove -- --group-name <name> --in <csv>` | Remove students from a group, by email (API v2; dry run unless `--confirm`) |
 | `npm run group:domains -- --group-name <name> [--add <domain>] [--remove <domain>]` | List or change a group's auto-add email domains (API v2; dry run unless `--confirm`) |
+| `npm run whoami -- [--json]` | Show the API v2 client's scopes and which commands it can run (read-only) |
+
+| `npm run enroll:add -- --course <id\|title> [--domain <name>] --in <csv>` | Enroll existing students in a course, by email (API v2; dry run unless `--confirm`; **writes not yet live-tested**) |
+| `npm run enroll:remove -- --course <id\|title> [--domain <name>] --in <csv>` | Deactivate students' enrollments in a course, by email (API v2; dry run unless `--confirm`; **writes not yet live-tested**) |
 | `npm test` | Run the unit tests |
 
 ### Group membership (API v2)
@@ -207,6 +216,54 @@ The v2 API cannot list a group's members. So an add reports who was already
 a member only after it runs, and a remove reports everyone sent as removed,
 whether or not they were in the group.
 
+### Course analytics (API v2)
+
+`export:analytics` writes Skilljar's own per-course summary to
+`public/data/course-analytics.csv`: enrollments, completions, completion
+rate, certificates issued and ratings. It needs `courses:read` and
+`analytics:read`, plus `domains:read` for the per-domain options:
+
+```bash
+syncjar export:analytics                                 # one row per course
+syncjar export:analytics --by-domain                     # plus a row per course per domain
+syncjar export:analytics --domain courses.example.com    # plus one domain only
+```
+
+The figures are aggregates; there is nothing per student, lesson or quiz.
+Unlike `export:metrics`, it needs no `sync:users` first. A per-domain
+run makes one request per course per domain, so it takes about a minute.
+
+### Enrollments (API v2)
+
+`export:enrollments` writes one row per enrollment to
+`public/data/enrollments.csv`: course, Skilljar domain, the student's email
+and name, when they enrolled and completed, progress and success status,
+score, certificate, source (self-enrolled, purchased or assigned) and
+whether the enrollment is active. It needs `enrollments:read`,
+`published-courses:read` and `courses:read`, `domains:read` for `--domain`,
+and `analytics:read` for the cross-check below. Whether it also needs
+`students:read` for the student columns is untested.
+
+```bash
+syncjar export:enrollments                                          # every enrollment
+syncjar export:enrollments --course "first build" --email-domain example.com
+syncjar export:enrollments --domain courses.example.com --completed-only --since 2026-07-01
+syncjar export:enrollments --email someone@example.com --include-feedback
+```
+
+`--course` matches an id or part of a title, as `pull --course` does, and
+`--course`, `--domain`, `--email` and `--email-domain` repeat. `--since` is
+the enrolment date, in UTC. `--email-domain` matches the domain exactly:
+`example.com` does not include `eu.example.com`, so name each one wanted.
+Rating and the free-text feedback are left out unless `--include-feedback`.
+
+When the export is not narrowed by student or date, its counts per course
+are compared with the analytics summary, and any difference is reported;
+`--no-check` skips that. Every read happens before the file is written, and
+a failed one stops the export. The whole organisation takes about a
+minute and a half. The file holds names and addresses, so delete it when
+you are done.
+
 ### Auto-add email domains
 
 A group's email domains put every new student who signs up with an address
@@ -229,6 +286,191 @@ stops if it changed since the plan was shown, writes the merged list, and
 reads it back. It prints the previous list afterwards, so a mistake can be
 undone by hand. Free-mail domains such as `gmail.com` are refused unless
 you pass `--allow-public-domain`.
+
+### Which commands can this client run?
+
+A v2 client that lacks a scope gets a 403 from the first call that needs
+it, which can be partway through a run. `whoami` checks up front: it
+exchanges `SKILLJAR_CLIENT_ID` and `SKILLJAR_CLIENT_SECRET` for a token,
+reads the client id, organisation, token lifetime and scopes out of it, and
+lists every v2 command as runnable or with the scopes it is missing. The
+commands that need `SKILLJAR_API_KEY` instead are listed after, with
+whether it is set.
+
+```bash
+syncjar whoami          # for people
+syncjar whoami --json   # for scripts
+```
+
+The scope names come from the token itself, because Skilljar's token
+response does not include them. `whoami` makes no request beyond the token
+exchange and never prints the token or the secret. A client shown as able
+to run the group commands is not limited to membership:
+`student-groups:write` also renames and deletes groups and changes their
+domains and course visibility (see [Group membership](#group-membership-api-v2)).
+
+The scopes each command needs are listed in `src/lib/skilljar/v2-scopes.mjs`,
+and the tests fail if a v2 command is missing from it.
+
+### Course enrollments (API v2) — writes not yet live-tested
+
+> **The write path of `enroll:add` and `enroll:remove` has never been run
+> against Skilljar.** It was built from the v2 spec and tested against fakes.
+> Until the live test below has been done, `--confirm` refuses to run unless
+> `SYNCJAR_ENROLL_WRITES=1` is set as well. Dry runs are reads only, and safe.
+
+`enroll:add` enrolls existing students in a course by email, and
+`enroll:remove` deactivates their enrollments. A deactivated enrollment is
+not deleted: it keeps its progress, and v2 has no way to delete an
+enrollment. Neither command uses `PATCH /enrollments/completion`, which would
+mark learners as having completed a course they did not complete. The
+commands need an OAuth client with `courses:read`, `published-courses:read`,
+`domains:read`, `students:read`, `enrollments:read` and `enrollments:write`.
+
+```bash
+# Dry run: reads only, and shows who would be enrolled and who is skipped
+syncjar enroll:add --course "Intro to Chainguard" --domain courses.example.com --in acme.csv
+
+# Do it, with an expiry: asks you to type "enroll <n>" first
+syncjar enroll:add --course <id> --domain courses.example.com --in acme.csv --expires-at 2027-01-31 --confirm
+
+# Deactivate: asks you to type "unenroll <n>" first
+syncjar enroll:remove --course <id> --domain courses.example.com --email a@acme.com --confirm
+```
+
+An enrollment belongs to a course *on one domain*, so `--domain` is required
+when the course is published on more than one. `--course` takes the v2
+course id or the exact title. Every email is looked up first, along with that
+student's enrollment in the course on that domain. Nobody is created, and
+some emails are skipped:
+
+| Skipped | `enroll:add` | `enroll:remove` |
+|---|---|---|
+| No Skilljar account, or more than one | ✓ | ✓ |
+| Already actively enrolled | ✓ | — |
+| Enrollment deactivated or expired | unless `--reactivate` | ✓ (already inactive) |
+| Deactivated account | ✓ | — |
+| Not an active member of the domain | ✓ | — |
+| Not enrolled | — | ✓ |
+| More than one active enrollment in the course on that domain | — | ✓ |
+
+The domain-member and deactivated-account skips stay until the live test
+shows what Skilljar does with those students. A confirmed run sends batches
+of 100 and stops at the first batch that fails as a whole. Afterwards it
+reads every student's enrollment back: a row counts as done only when the
+read-back matches what was meant (active, with the requested expiry, for an
+add; the targeted enrollment inactive for a remove). The audit CSV in
+`public/data/` records each email's state before and after, including the
+learner's progress. It holds names and addresses, so delete it when you are
+done.
+
+Paths have no enrollments in v2; these commands handle courses only.
+
+#### Live test plan
+
+Run this once, by the maintainer, with your own account only, on a
+throwaway course that is published **only on the staging domain** and has at
+least one lesson. "Claude test course" qualifies. Use an OAuth client with
+exactly the six scopes above. Run everything from a clone, so that
+`#lib/...` resolves for the one-off reads.
+
+What it must establish, which nothing so far has:
+
+1. Whether a confirmed add enrolls the student, with `channel` `api`, and
+   whether Skilljar emails the learner.
+2. How a `POST` reports a student who is already enrolled: a failed row
+   `already_enrolled` (207), or `succeeded` with the original enrollment.
+3. What `active: false` does: whether the learner loses access, whether
+   progress and `completed_at` are kept, and whether analytics counts change.
+4. What a `POST` does for a deactivated enrollment ("reactivation" in the
+   spec): the same enrollment id or a new row, whether progress is kept,
+   whether `enrolled_at` changes, and whether `expires_at` is applied.
+5. Whether anything else moved: the student record, domain memberships,
+   other enrollments.
+
+Steps:
+
+1. **Snapshot.** Save your own state, to compare against at the end:
+
+   ```bash
+   node --input-type=module -e "
+   import fs from 'node:fs';
+   import { createSkilljarV2Client, listAllV2 } from '#lib/skilljar/client-v2.mjs';
+   const c = createSkilljarV2Client(); const me = 'you@example.com';
+   const { data: s } = await c.get('/students/', { params: { 'filter[email]': me } });
+   const snap = { student: s.data,
+     enrollments: await listAllV2(c, '/enrollments/', { 'filter[student.email]': me }),
+     memberships: await listAllV2(c, '/students/' + s.data[0].id + '/relationships/domain-memberships/') };
+   fs.mkdirSync('public/data', { recursive: true });
+   fs.writeFileSync('public/data/enroll-test-' + process.argv[1] + '.json', JSON.stringify(snap, null, 2));
+   " before
+   ```
+
+   Also note the course's enrollment count from
+   `GET /analytics/courses/<course id>?filter[domains]=<staging domain>`.
+2. **Dry run the add.** `syncjar enroll:add --course <id> --email <you>`.
+   It should plan `enroll 1`, with you `now not_enrolled`. If you are already
+   enrolled, use a different throwaway course.
+3. **Add.** The same command with `--confirm` and `SYNCJAR_ENROLL_WRITES=1`;
+   type `enroll 1`. Check: exit 0; the audit row reads `enrolled` with
+   `after` `active`; `GET /enrollments/<enrollment_id>` has `active` true,
+   `expires_at` null, `channel` and `source` (record both); the course is on
+   your learner dashboard on the staging domain; whether an email arrived.
+4. **Add again, sent directly.** The command skips you now (dry run:
+   `already enrolled`), so to learn finding 2, send one row yourself:
+
+   ```bash
+   node --input-type=module -e "
+   import { createSkilljarV2Client } from '#lib/skilljar/client-v2.mjs';
+   const c = createSkilljarV2Client();
+   try {
+     const r = await c.post('/enrollments/', { published_course_id: '<published course id>', data: [{ type: 'enrollments', attributes: { email: '<you>' } }] });
+     console.log(r.status, JSON.stringify(r.data, null, 2));
+   } catch (e) { console.log(e.response?.status, JSON.stringify(e.response?.data)); }
+   "
+   ```
+
+   Record the status, the row's `status` and `error.code`, and whether the
+   enrollment id and `enrolled_at` match step 3's. Read it back: still one
+   active row?
+5. **Make progress.** As the learner, complete one lesson. Check that
+   `GET /enrollments/<id>` shows `progress_status` `in_progress`, and note
+   `score` and `completed_at`.
+6. **Dry run, then confirm, the remove.**
+   `syncjar enroll:remove --course <id> --email <you>` should plan
+   `deactivate`, `now active, in_progress`. With `--confirm`, type
+   `unenroll 1`. Check: the audit row reads `deactivated`; the enrollment
+   reads `active` false with the same `progress_status` and `completed_at`;
+   whether the course is still on your dashboard and whether its URL still
+   opens it; the analytics enrollment count compared with step 1; whether an
+   email arrived.
+7. **Re-run both dry runs.** `enroll:remove` should skip you as already
+   inactive, and `enroll:add` as `deactivated enrollment; pass --reactivate`.
+8. **Reactivate, with an expiry.**
+   `syncjar enroll:add --course <id> --email <you> --reactivate --expires-at <tomorrow> --confirm`,
+   type `enroll 1`. Check: the audit row's `enrollment_id` against step 3's
+   (same row or a new one); `GET /enrollments/?filter[student.email]=<you>&filter[course.id]=<id>`
+   (one row or two); `progress_status` (kept or reset); `enrolled_at`;
+   `expires_at` (the read-back fails the row if it was not applied, which is
+   itself the finding); access and email as before.
+9. **Leave it deactivated.** Run step 6's confirmed remove again, so the
+   test ends with your enrollment inactive. v2 cannot delete an enrollment;
+   if you want it gone, unenroll yourself in the dashboard.
+10. **Compare.** Take a second snapshot (`... " after`) and diff the two.
+    Only this course's enrollment should differ. The student record and
+    domain memberships should be identical.
+11. **Clean up.** Delete `public/data/enroll-test-*.json` and the
+    `enroll-*-audit-*.csv` files.
+
+Not covered, on purpose: what a `POST` does with an email that has no
+account (it may create one, and the commands never send such an email), and
+students who are not members of the domain (that needs a second account).
+Both stay skipped until someone tests them separately.
+
+Once the steps pass, record the findings in `CLAUDE.md` next to the
+`group:add` ones, remove the `SYNCJAR_ENROLL_WRITES` guard
+(`writesUnlocked` in `src/lib/enrollments/enroll-plan.mjs` and its check in
+`enroll-run.mjs`), and drop "not yet live-tested" from this section.
 
 ## 🗃 Course Directory Names
 
@@ -549,6 +791,83 @@ npm run check:settings -- --fail-on-outliers             # exit 1 if anything is
 
 Domains come from `--domain`, then `SKILLJAR_DOMAINS`, then every domain the
 key can see.
+
+### Checking for dashboard edits before a push (API v2)
+
+`push` overwrites Skilljar with the local tree, so a lesson edited in the
+Skilljar dashboard since the last pull loses that edit. Timestamps cannot
+be relied on to catch this: an API content edit moves no `modified_at`, and
+whether a dashboard edit does has never been established.
+`check:drift` reads Skilljar's audit log instead, which records dashboard
+actions and not API writes, so a push's own writes never show up in it.
+
+```bash
+syncjar check:drift                         # since the last pull commit in the content repo
+syncjar check:drift --since 2026-10-01      # since a date (UTC)
+syncjar check:drift --since 59f6afa1        # since a commit in the content repo
+syncjar check:drift --course launchpad      # only local courses whose directory, id or title matches
+syncjar check:drift --json                  # machine-readable
+```
+
+By default it starts from the newest commit in `COURSE_CONTENT_PATH`'s repo
+whose subject says it synced or pulled from Skilljar (`chore(content): sync
+Skilljar → courses/`, `Sync Skilljar content`, `content: pull …`). It does not
+start from the newest commit of any kind: a local edit committed after a
+dashboard edit would move the start past that edit and hide it. A commit that
+recorded dashboard edits by hand under another subject makes them show up
+again; pass `--since <that commit>` to start after it.
+
+The report is grouped by course and then lesson, one line per kind of change
+with a count and a date range. Lesson content edits (`HTML`, `VIDEO`, `QUIZ`,
+downloads) are marked `!` and come first, because those are what a push
+destroys. Creations, deletions, reorders and publishes are marked `~`; titles,
+descriptions and flags `·`. Lessons and courses missing from the local tree are
+looked up, and reported as new upstream, never pulled, or deleted.
+
+Exit codes: `0` nothing was edited, `2` something was, `1` an error. So run it
+before a push, and stop if it exits 2:
+
+```bash
+syncjar check:drift && syncjar push
+```
+
+It needs an API client with `audit:read`, plus `lessons:read` and
+`courses:read`. It makes GET requests and runs `git log`, nothing else. The
+audit log names the dashboard user behind each event; the report leaves them
+out. `--show-actors` adds them in an interactive terminal only, and is refused
+with `--json` or when output is not a terminal, so they cannot end up in a CI
+log or a file.
+
+### Checking who can see what
+
+`syncjar check:visibility` is read-only and uses the v2 API. It needs a client
+with `domains:read`, `student-groups:read`, `published-courses:read` and
+`paths:read`. For each domain it lists the published courses and paths that
+are restricted (hidden, strict enforcement on, or carrying group rules) and
+says in plain words who can see each one. Then it lists what each group
+unlocks, and then likely mistakes:
+
+- overrides on unpublished courses, or on courses that no longer exist;
+- a hidden course or path with strict enforcement and no allowed group, which
+  nobody can see;
+- a path listed for an audience that can see none of its courses, which
+  closes its registration;
+- a restricted course inside a path that more people can see.
+
+```bash
+syncjar check:visibility                                          # every domain and group
+syncjar check:visibility --domain courses.example.com --group Partners
+syncjar check:visibility --json                                   # the whole model, for scripts
+syncjar check:visibility --out                                    # also public/data/visibility.csv
+```
+
+Each record is judged for "(everyone)", meaning anyone in none of its groups
+(anonymous visitors included), and for each group, as one of: `listed` (shows
+in the catalog), `link-only` (not listed, but a direct link opens it),
+`blocked`, or `unpublished`. Hidden decides the catalog listing. Strict
+enforcement decides whether a direct link still works. The command does not
+model `CATEGORY` visibility, and does not work out what a student in several
+groups sees. It says so where that applies. Exits 0 whatever it finds.
 
 ## 🛠️ Example Workflows
 
