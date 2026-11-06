@@ -41,6 +41,7 @@
     "check:links": "node src/commands/check/links.mjs",
     "check:membership": "node src/commands/check/membership.mjs",
     "check:settings": "node src/commands/check/settings.mjs",
+    "check:visibility": "node src/commands/check/visibility.mjs",
     "sync:users": "node src/commands/sync/users.mjs",
     "group:audit": "node src/commands/group/audit.mjs",
     "group:revoke": "node src/commands/group/revoke.mjs",

@@ -153,6 +153,7 @@ next `syncjar update` replaces. The preview commands (`serve`,
 | `npm run push:lesson-settings` | Push lesson `optional`, description and tooltip from `lessons-meta.json` |
 | `npm run push:published-settings` | Push per-domain `hidden` and group visibility from `published.json` |
 | `npm run check:settings` | Report courses and paths whose settings differ from the rest (read-only) |
+| `npm run check:visibility -- [--group <name>] [--domain <name>]` | Report which groups can see which published courses and paths, per domain, and flag likely mistakes (read-only, API v2) |
 | `npm run generate:courses` | Regenerate the local preview index |
 | `npm run build:preview` | Pull + generate (full refresh) |
 | `npm run serve` | Start the local preview server at http://localhost:3000 |
@@ -585,6 +586,37 @@ npm run check:settings -- --fail-on-outliers             # exit 1 if anything is
 
 Domains come from `--domain`, then `SKILLJAR_DOMAINS`, then every domain the
 key can see.
+
+### Checking who can see what
+
+`syncjar check:visibility` is read-only and uses the v2 API. It needs a client
+with `domains:read`, `student-groups:read`, `published-courses:read` and
+`paths:read`. For each domain it lists the published courses and paths that
+are restricted (hidden, strict enforcement on, or carrying group rules) and
+says in plain words who can see each one. Then it lists what each group
+unlocks, and then likely mistakes:
+
+- overrides on unpublished courses, or on courses that no longer exist;
+- a hidden course or path with strict enforcement and no allowed group, which
+  nobody can see;
+- a path listed for an audience that can see none of its courses, which
+  closes its registration;
+- a restricted course inside a path that more people can see.
+
+```bash
+syncjar check:visibility                                          # every domain and group
+syncjar check:visibility --domain courses.example.com --group Partners
+syncjar check:visibility --json                                   # the whole model, for scripts
+syncjar check:visibility --out                                    # also public/data/visibility.csv
+```
+
+Each record is judged for "(everyone)", meaning anyone in none of its groups
+(anonymous visitors included), and for each group, as one of: `listed` (shows
+in the catalog), `link-only` (not listed, but a direct link opens it),
+`blocked`, or `unpublished`. Hidden decides the catalog listing. Strict
+enforcement decides whether a direct link still works. The command does not
+model `CATEGORY` visibility, and does not work out what a student in several
+groups sees. It says so where that applies. Exits 0 whatever it finds.
 
 ## 🛠️ Example Workflows
 
