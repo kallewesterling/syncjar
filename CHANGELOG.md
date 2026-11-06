@@ -23,6 +23,15 @@ and version scheme in `CLAUDE.md`.
   prints the same report for scripts. The scopes each command needs live in
   one table, and a test fails if a v2 command is left out of it.
 
+- `check:drift` lists the lessons and courses edited in the Skilljar
+  dashboard since the last pull, from the v2 audit log (`audit:read`), so
+  that a push does not silently overwrite them. It starts from the newest
+  pull commit in the content repo, or `--since <date or ref>`, reads the log
+  in 90-day windows, and groups edits by course and lesson with content edits
+  first. Exits 2 when anything was edited, so `syncjar check:drift && syncjar
+  push` stops. Read-only, and it leaves dashboard usernames out unless
+  `--show-actors` is passed in a terminal.
+
 - A global `syncjar` command (`npm install --global
   github:kallewesterling/syncjar#main`). Every npm script is a subcommand with
   the same options, so `syncjar push:quizzes --dry-run` is `npm run

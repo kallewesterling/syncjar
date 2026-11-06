@@ -354,6 +354,46 @@ never written to** — the worst a wrong skip does is not report drift, and
 decides to *write*, or to *not pull*, loses that property and needs the
 experiment run first.
 
+## The audit log is the drift signal (`check:drift`)
+
+`GET /v2/audit-events/` (scope `audit:read`) records dashboard actions and
+not API writes, so it answers what `modified_at` cannot: was anything edited
+in the dashboard since the last pull. `check:drift` reads it; the logic is in
+`src/lib/drift/`. Observed on 2026-11-06 with an all-`:read` client, counts
+and shapes only:
+
+- **History reaches back to at least 2023-12-01.** A window from 2023-06-01
+ returned nothing; one from 2023-12-01 had events at its first second, so
+ the true start is somewhere in between and untested.
+- **`channel` is null on every event before July 2025** and `"dashboard"`
+ after; every null-channel event still has a user id. Never filter on
+ `channel`: it drops a year of history. `client.name`, `request_id` and
+ `endpoint` were null on all 5,544 events read, consistent with API writes
+ not being logged.
+- **Target types contain spaces** (`dashboard user`, `lesson progress`,
+ `api v2 client`), and `section` is its own type. A section target id is a
+ lesson id: 28 of 30 section updates matched a `SECTION` lesson in
+ `lessons-meta.json`. So drift reads `lesson`, `section` and `course`.
+- **Lesson fields seen:** `HTML`, `VIDEO`, `QUIZ`, `title`,
+ `description_html`, `is_optional`, `downloadable_content`. Actions beyond
+ `update`: `create`, `delete`, `reorder`, `add`/`remove` (setting or clearing
+ a field, e.g. `add description_html`), `upload`, and on courses `publish`
+ and `clone`.
+- **A course deleted in the dashboard keeps its lessons readable**, as found
+ on 2026-09-29, and the log shows it: of 20 deleted courses with events
+ since 2025-01, 5 had lessons that `GET /v2/lessons/{id}` still returns with their
+ `course_id`. So a lesson that reads back is not proof its course exists;
+ `check:drift` reads the course too.
+- **A pull is identified by its commit subject**, since the nightly bot also
+ authors link-fix commits. The newest commit of any kind is the wrong start:
+ a local commit made after a dashboard edit would hide it. Subject matching
+ errs the safe way. `84b2791c` ("content: attach videos…", 2026-10-28)
+ recorded 22 dashboard video attachments by hand, so they still report as
+ drift from the sync before it.
+- A full read since 2025-01-01 is 8 windows × 3 types plus one GET per
+ lesson or course missing from the tree: 2,794 events, 15 to 85 seconds
+ across two runs.
+
 ## Settings writes
 
 Established on 2026-10-28 and 2026-10-29 against throwaway objects published
