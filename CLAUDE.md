@@ -53,7 +53,7 @@ history as starting there.
 
 ## CRITICAL: never let a raw axios error reach the console
 
-`scripts/skilljar-client.mjs` authenticates with HTTP Basic using `SKILLJAR_API_KEY`.
+`src/lib/skilljar/client.mjs` authenticates with HTTP Basic using `SKILLJAR_API_KEY`.
 A raw axios error holds `config`, `request` and `response.headers`, and
 `config.headers.Authorization` is `Basic <base64 of the key>` — so an
 **unhandled rejection prints the key** in trivially recoverable form. Measured
@@ -74,7 +74,7 @@ There are now two layers, and both matter:
    vacuously.
 2. **Callers still catch.** Redaction stops the leak; it does not make a
    half-finished sync a good outcome. Route failures through `failCleanly()`
-   (exported from `scripts/skilljar-client.mjs`), which prints status and a
+   (exported from `src/lib/skilljar/client.mjs`), which prints status and a
    short body and exits 1.
 
 So when adding a call:
@@ -93,8 +93,199 @@ to the client must therefore be **relative to that**:
 - ✅ `client.get('/groups/{id}/users')`
 - ❌ `client.get('/v1/groups/{id}/users')` → resolves to `/v1/v1/…` → 404
 
-Full endpoint reference: <https://api.skilljar.com/docs/> (JavaScript-rendered, so
-`curl`/fetch returns an empty shell; open it in a browser).
+Full endpoint reference: <https://api.skilljar.com/docs/>. That page is
+JavaScript-rendered, so `curl` gets an empty shell, but the OpenAPI spec it
+loads is plain YAML and greps well:
+`curl -s https://api.skilljar.com/docs/schema.yml`.
+
+## API v2: scoped OAuth clients, and what they can't do
+
+`src/lib/skilljar/client-v2.mjs` talks to `https://api.skilljar.com/v2`
+(spec: `curl -s https://api.skilljar.com/v2/openapi.json`). It does not take
+the v1 key. `SKILLJAR_CLIENT_ID` and `SKILLJAR_CLIENT_SECRET` are exchanged at
+`POST /v2/auth/token` for a JWT that lasts 900 seconds, and every operation
+needs a named scope on that client. A client can therefore be issued for one
+job, which is why `group:add` and `group:remove` use v2: the partner team can
+hold a client that cannot touch content, enrollments or accounts.
+
+**`student-groups:write` is not membership-only.** It also covers
+`POST`, `PATCH` and `DELETE /groups/` (create, rename, rewrite
+`rule_email_domains`, hard batch delete) and the group's
+`published-course-visibility` writes. So the partner client can do all of
+that by calling the API directly; only Syncjar's own commands limit it.
+Say so when handing one out, rather than calling it membership-only.
+
+**A token names its scopes**, even though the token response does not: the
+JWT's payload has a `scopes` array (with `client_id`, `organization_id`,
+`exp`). Decoding it locally needs no extra scope. Print scope names only,
+never the token.
+
+Observed on 2026-10-30:
+
+- **The token response carries no `scope`** (the JWT does; see above), so a missing scope only shows
+  up as a 403 (`permission_denied`) on the call that needs it. A client with
+  `student-groups:*` but not `students:read` reads groups and then fails the
+  email lookup.
+- **An inactive client is a 401** `invalid_client`, "Client is inactive."
+- **v2 cannot list a group's members.** There is no GET on
+  `/groups/{id}/relationships/students/`, only POST and DELETE, which take
+  student ids, not emails. Hence the per-email `GET /students/?filter[email]=`.
+- **Content ids are shared with v1; student ids are not.** Checked against
+  the whole local course tree: all 74 courses, 698 lessons and their
+  content items, 136 quizzes, and one quiz's questions and answers have the
+  same id in both. Five of five students had a different v2 id from their v1
+  user id. Never pass a v1 user id to a v2 call; look the student up by
+  email.
+- **A group's `rule_email_domains` is written whole.** `PATCH /groups/`
+  replaces the array, so `group:domains` re-reads it after the prompt and
+  aborts if it moved, then reads back. v1 has a true add/remove
+  (`PATCH /v1/groups/{id}/email-domain-rules` with `add`/`remove`), but it
+  needs the v1 key, which is what v2 is here to avoid.
+
+Established on 2026-10-30 against a throwaway group created with
+`POST /v2/groups/` and deleted afterwards, with every other group
+snapshotted before and diffed after (none moved, `modified_at` included):
+
+- A PATCH of only `rule_email_domains` changed that field and `modified_at`
+  and nothing else. `group:domains` added a domain to an empty list, swapped
+  one for another, and removed the last one; each read back as written.
+- **The list can be cleared**: removing the last domain reads back as `[]`,
+  not an error, unlike the course fields that cannot be blanked.
+- The create response's attributes omit `category_id`; a read returns it as
+  `null`. Compare reads with reads.
+- `DELETE /v2/groups/` with `{ data: [{ type: 'groups', id }] }` returned 200
+  with `status: deleted`, then 404 on read. It is a **hard, batch delete**
+  that cascades memberships and visibility, so a script that calls it must
+  only ever pass an id it created itself.
+
+Reads, observed on 2026-10-30 with an all-`:read` client:
+
+- **`GET /lessons/{id}` carries `content_items`, which the spec omits**:
+  every item with `id`, `type`, `header` and, for HTML, the full
+  `content_html`. The list `GET /lessons/` has `content_html: null` for
+  every `MODULAR` lesson, as v1's does, so content still costs one request
+  per lesson, but one per lesson rather than v1's one per item. All 698
+  lessons read in 47s at concurrency 6, and every HTML item matched v1's
+  byte for byte.
+- **Analytics `filter[domains]` takes domain names, not ids.** A domain id
+  returns zeros rather than an error, so `export:analytics` checks names
+  against `GET /domains/` first. Per-domain enrollments summed exactly to
+  the unfiltered figure across all 74 courses. `rating_count` was 0 on every
+  course: the dashboard's lesson rating blocks are not these ratings.
+
+Enrollments, observed on 2026-11-06 with the same all-`:read` client, for
+`export:enrollments`:
+
+- **An enrollment points at a published course, not a course.** Its
+  relationship is `published-course`, and `filter[course.id]` takes the
+  *course* id: a published-course id returns nothing, not an error. Each
+  row also carries `domain_name`, so the domain needs no extra read; the
+  course needs `GET /published-courses/`, whose records carry
+  `relationships.course`, without any `include`.
+- **`include=student` lists each student once per page**, however many of
+  the page's enrollments are theirs, so join rows to students by id.
+  `listAllV2` keeps only `data`; the export pages with its own reader that
+  keeps `included`. Whether `include=student` needs `students:read` as well
+  as `enrollments:read` is **untested**: this client has every scope.
+- **There is no filter by email domain.** `filter[student.email]` is a
+  whole address (the spec says case-insensitive), so a partner report
+  filters the included emails locally.
+- **The rows reconcile exactly with analytics.** A full sweep, 11,608
+  enrollments in 95s at 100 a page, matched
+  `GET /v2/analytics/courses/{id}` on enrollments, completions and
+  certificates for all 74 courses, with the list's default of active and
+  inactive enrollments alike. Every enrollment's published course was in
+  the published-course list.
+
+Visibility, observed on 2026-11-06 with an all-`:read` client, for
+`check:visibility` (GETs only):
+
+- **The spec's model.** `is_hidden` takes a published course out of the
+  catalog except for allowed groups. A group's override is an allowlist row
+  (`is_visible: true`) or a blocklist row (`false`), so on a hidden course
+  only the allowlist matters and on a visible one only the blocklist. A
+  published path's `group-visibility` is one list whose meaning flips:
+  "allowed on a hidden path, blocked on a visible one".
+  `strict_enforce_group_visibility` is "block access for students the course
+  is not visible to", so it decides whether a direct link still works.
+  Without it, hiding only unlists. None of this has been tested by signing
+  in as a member and a non-member; it is the spec's wording.
+- **`visible_on_catalog` is not the inverse of `is_hidden`.** 106 of 132
+  published courses are neither hidden nor `visible_on_catalog`, and one is
+  both. What it tracks is unknown, so nothing relies on it.
+- **Overrides name published-course ids**, so they are per domain. Path
+  items name published-course ids too, not course ids.
+- **A deleted course can leave its published-course rows behind.**
+  `GET /published-courses/` returned five `live: false` rows with a
+  `…-unpublished-<unix time>` slug. For all five, `GET /courses/{id}` was a
+  404, so `include=course` returns no title for them. Whether the dashboard's
+  delete or its unpublish made them is unknown. Group overrides on them
+  stay: three rows still had some.
+- Every published course and path had `visibility_override_type: GROUP`, and
+  no path had group or category visibility, so `CATEGORY` semantics and path
+  group lists have no live example. `check:visibility` reports `CATEGORY` as
+  not modelled rather than guessing.
+
+`group:add` and `group:remove` were tested the same way, the same day, with
+one real account (the maintainer's) in a throwaway group:
+
+- **Adding an existing member returns the original membership**: same
+  membership id, same `created_at`, status `succeeded`. That is the only
+  signal that a student was already in the group, so `alreadyMemberCutoff`
+  compares `created_at` with the response's `Date` header (Skilljar's clock,
+  in whole seconds) less the request time and 2s of slack. A membership made
+  within ~3s of the run still reads as new; without the header the cutoff
+  falls back to 5 minutes on the local clock.
+- **Removing a non-member also returns `deleted`**, with the student's id,
+  so a remove cannot report who was not in the group.
+
+`enroll:add` and `enroll:remove` were tested on 2026-11-06 and 2026-11-09
+with the maintainer's own account on "Claude test course", published only on
+the staging domain, through a client holding exactly their six scopes. A
+snapshot of the account before and after (student record, all 90 other
+enrollments, both domain memberships) diffed clean:
+
+- **An add** returned 200 and an active enrollment with `channel: api`,
+  `source: assigned`, no expiry. The learner saw the course on their
+  dashboard. No email arrived on the staging domain; the live domain is
+  untested.
+- **A repeat add** for an actively enrolled student is a 207 with a failed
+  row, `already_enrolled`, and changes nothing.
+- **`PATCH /enrollments/` with `active: false`** keeps the enrollment's id,
+  dates and progress (a completed enrollment stays completed). The learner's
+  dashboard shows the course as "Inactive" and a direct lesson link no longer
+  opens. Analytics still counts the enrollment and its completion.
+- **Every published course has `unique_progress_per_enrollment: true`** (and
+  `allow_self_service_reenroll: false`), all 132 of them. So a POST for a
+  student whose enrollment is deactivated is a re-enroll as Skilljar means
+  it: a **new** enrollment with its own id, today's `enrolled_at` and no
+  progress, beside the old one, which stays inactive with its progress. The
+  admin's student page then shows only the new one. That is `--re-enroll`.
+- **The same POST with `expires_at` returned a 207 row `internal_error`**
+  and wrote nothing, so `--re-enroll` refuses `--expires-at`. Whether
+  `expires_at` works on a first enrollment is untested.
+- **`PATCH /enrollments/` with `active: true`** brings the old enrollment
+  back in place: same id, original `enrolled_at`, progress intact. That is
+  `--restore`. It was sent by hand; the command sends the same body.
+- **v2 cannot delete an enrollment, and neither can the dashboard**, which
+  only deactivates. A re-enroll therefore leaves a second row for good, and
+  `--restore` refuses a student with more than one row rather than guess.
+
+Untested, and skipped by the commands: expired enrollments, deactivated
+accounts, students who are not members of the course's domain, and emails
+with no account (a POST might create one).
+
+## lessons-meta.json: `content_items` means files
+
+Every entry in a lesson's `content_items` names an HTML file, and every
+consumer — push, preview, the Markdown export, and content repos' own tooling —
+reads `item.file` from each one. Quiz, asset and rating content items have no
+file, so the pull records them under `non_html_items` instead
+(`src/lib/content/lesson-meta.mjs`). Keep it that way rather than adding typed entries
+to `content_items`, which would break each of those readers.
+
+Push also refuses to PUT a file whose upstream item is not `HTML`, because
+the PUT sends `type: 'HTML'` and would replace a quiz with a page.
 
 ## Destructive operations
 
@@ -115,21 +306,50 @@ Full endpoint reference: <https://api.skilljar.com/docs/> (JavaScript-rendered, 
 - Student exports contain real names and email addresses. Delete them when the
   task is done; they regenerate from the API in one command.
 
-## Importing a script runs it
+## Importing a command runs it
 
-Every file in `scripts/` ends in a top-level `(async () => { … })()`, so
-`import()`ing one executes it. `node -e "import('./scripts/sync-skilljar-to-local.mjs')"`
-is not a syntax check — it is a full pull, overwriting the course content tree.
-Use `node --check <file>` to check syntax, and `node --test` for behaviour.
+The directory says which kind of file you are looking at:
 
-This is also why the logic worth testing lives in modules that export
-functions and do nothing on import (`push-plan.mjs`, `push-args.mjs`,
-`push-state.mjs`, `skilljar-fetch.mjs`, `render-diff.mjs`, `course-dirs.mjs`,
-`branch-guard.mjs`, `concurrency.mjs`) rather than in the entry-point
-scripts. Put new logic there.
+- **`src/commands/`** — one file per npm script, named for it: `push:quizzes`
+  is `src/commands/push/quizzes.mjs`, and a bare `push` is
+  `src/commands/push/index.mjs`. Most end in a top-level
+  `(async () => { … })()`, so `import()`ing one executes it.
+  `node -e "import('./src/commands/pull/index.mjs')"` is not a syntax check —
+  it is a full pull, overwriting the course content tree. Use
+  `node --check <file>` to check syntax, and `node --test` for behaviour.
+- **`src/lib/`** — modules that export functions and do nothing on import.
+  The logic worth testing lives here, not in the commands. Put new logic here.
+  Import it as `#lib/<path>.mjs` (the `"imports"` map in `package.json`), from
+  commands and tests alike, so a file's depth never shows up in its imports.
 
-Where a script must be importable — `sync-users.mjs` is, for its merge logic
-— guard the entry point:
+Resolve default paths such as `public/data/` against `workRoot` from
+`#lib/paths.mjs`, not `path.join(__dirname, '..')`, which silently points
+somewhere else as soon as a command moves to a different depth. `workRoot`
+is the clone when running from one, and the current directory under a
+global `npm install`, whose directory `syncjar update` replaces — so
+anything written there, student exports included, would vanish on the next
+update. `repoRoot` is the install itself; only the preview commands, which
+serve its tracked `public/` files, use it, and `bin/syncjar.mjs` refuses to
+run them outside a clone (`CHECKOUT_ONLY` in `#lib/cli.mjs`).
+
+## The `syncjar` command
+
+`bin/syncjar.mjs` runs npm scripts as subcommands, reading the list from
+`package.json` (`commandTable` in `#lib/cli.mjs`), so a new script needs no
+CLI change. Each command runs as a child process with the user's options
+passed through.
+
+`syncjar update` installs `github:<repo>#<ref>` with `npm install --global`
+(default ref `main`). It first fetches `package.json` at that ref and refuses
+if it has no `bin.syncjar`. That was observed in a throwaway prefix:
+installing `dev` from before the CLI existed removed the `syncjar` command
+entirely, which leaves no `syncjar update` to recover with. So the default
+`main` only becomes usable once a release containing the CLI is tagged; until
+then, install and update with `--ref` pointing at a branch that has it.
+
+Where a command must be importable — `sync/users.mjs` is, for its merge
+logic, and `pull/paths.mjs` for its matching and comparison helpers — guard
+the entry point:
 
 ```js
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
@@ -140,16 +360,18 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
 one makes the module unimportable on any machine without a `.env` — which
 is every CI runner. `sync-users.mjs` did exactly that, and the whole suite
 passed locally and failed on its first CI run.
-`test/import-without-credentials.test.mjs` now imports each of these modules
-in a child process with the key stripped and the cwd moved away from the
-repo, so a `.env` cannot mask it again.
+`test/import-without-credentials.test.mjs` now imports every module under
+`src/lib/`, plus the two importable commands, in a child process with the key
+stripped and the cwd moved away from the repo, so a `.env` cannot mask it
+again. It walks the directory rather than keeping a list, so a new module is
+covered the day it is added.
 
 ## Read lists, not objects
 
 Skilljar exposes courses, lessons and content items both per-object and as
 paginated lists. The per-object form reads naturally in a loop, and `push` was
 written that way: 1,537 round trips at ~380ms, about ten minutes to check 66
-courses. `scripts/skilljar-fetch.mjs` holds the list reads both sync scripts
+courses. `src/lib/skilljar/fetch.mjs` holds the list reads both sync scripts
 use — prefer them, and do not add a `GET /courses/{id}` or `GET /lessons/{id}`
 to a loop.
 
@@ -159,28 +381,318 @@ ours), so content costs one request per lesson no matter what; and lessons and
 content items carry no timestamps at all, so `modified_at` on a course is the
 only freshness signal the API offers.
 
-## `modified_at` is not proven to track content edits — keep it non-load-bearing
+## Pulls write atomically — never truncate a content file in place
+
+`fs.writeFile`, and fs-extra's `outputFile`, `outputJson` and `writeJson`,
+open the target with `O_TRUNC` and then write. Every pull used them. On
+2026-10-28 a Ctrl+C during `pull` left two lesson files at 0 bytes. Git shows
+that as an ordinary edit deleting every line, and a `push` of that commit
+empties the live lesson. A cancelled nightly CI sync can do the same.
+
+So every file a pull writes (`pull`, `pull:slugs`, `pull:paths`, quizzes
+included) goes through `writeFileAtomic` / `writeJsonAtomic` in
+`src/lib/content/atomic-write.mjs`. Each one writes a temp file in the same
+directory, flushes it, and renames it over the target. Temp files are named
+`.<name>.syncjar-<12 hex>.tmp`, so they are dotfiles that no `.html`/`.json`
+reader matches. Each pull removes any left by a killed run before it starts.
+`writeJsonAtomic` output is byte-identical to `outputJson(…, { spaces: 2 })`,
+so switching caused no churn. A pull into a copy of the courses repo diffed
+clean. When adding a pull-side write, use these helpers rather than fs-extra.
+
+As a second guard, `src/lib/content/empty-content.mjs` stops pull replacing a
+non-empty content file with an empty one on one read. Pull's content comes
+from the content-items list with `include_content`, which the spec doesn't
+document, and `GET /lessons` has already shown that a list's `content_html`
+can be empty when the content isn't. So an empty value over a non-empty file
+is confirmed with the documented `GET /lessons/{id}/content-items/{id}`. If
+that read has content, pull writes it. If it returns `''`, the item really is
+empty, and pull writes the empty file with a warning. If it fails, or returns
+no field, pull keeps the file, warns, and exits 1.
+
+## `modified_at` tracks dashboard edits, not API edits — keep it non-load-bearing
 
 `push` skips courses recorded as in sync (`push-state.mjs`), keyed on a local
 content hash *and* the course's upstream `modified_at`. It is tempting to lean
 harder on that timestamp — to skip on it alone, or to use it to decide what to
-pull. Don't, without settling this first.
+pull. Don't: it misses every edit made through the API.
 
-**It has never been established that editing a content item in the Skilljar
-web UI bumps its parent course's `modified_at`.** The obvious place to look is
-the content repo's nightly-sync history, and it cannot answer: across every
-sync commit, no *pre-existing* course has ever had its normalised content
-change upstream. The cell is empty. (The cases that look like evidence are
-newly added courses, where there is no prior record to compare, and
-trailing-newline churn from the pull's own writes, which `normalizeHtml`
-correctly calls unchanged.) Settling it needs a deliberate content-only push
-followed by a read of the course record.
+**A dashboard content edit bumps the course's `modified_at`.** On 2026-11-06
+one word in the HTML block of "Test lesson" on the throwaway "Claude test
+course" was changed in the dashboard and saved. The course's `modified_at`
+in v1 and v2, and the lesson's v2 `modified_at`, all moved to the same
+microsecond as the save, and the item's HTML changed. The audit log recorded
+it as one `HTML` update on the lesson, and `check:drift` reported it. One
+edit, one lesson type (`MODULAR`, HTML item); other item types are untested.
 
-The current design is safe without an answer, because **a skipped course is
+**For edits through the API, it is settled the other way: they bump nothing.** On
+2026-10-30 a content-only `PUT /v1/lessons/{id}/content-items/{id}` on the
+throwaway "Claude test course" landed (both v1 and v2 read the new HTML back)
+and moved no timestamp at all: not the course's `modified_at` in v1 or v2,
+not the lesson's v2 `modified_at`, and v2's `GET /lessons/?filter[updated_since]=`
+did not list the lesson. The content was then restored byte for byte. v2
+content items carry no timestamp of their own. So v2's lesson timestamps,
+new as they are, cannot drive an incremental pull either: a `push` from
+another checkout is invisible to them.
+
+So the timestamp catches dashboard edits and misses API edits, and the audit
+log (below) has the same blind spot. A `push` from another checkout, or any
+other API client, shows up in neither. The current design is safe anyway, because **a skipped course is
 never written to** — the worst a wrong skip does is not report drift, and
 `pull` is what reconciles drift anyway. Any future use of `modified_at` that
 decides to *write*, or to *not pull*, loses that property and needs the
 experiment run first.
+
+## The audit log is the drift signal (`check:drift`)
+
+`GET /v2/audit-events/` (scope `audit:read`) records dashboard actions and
+not API writes, so it answers what `modified_at` cannot: was anything edited
+in the dashboard since the last pull. `check:drift` reads it; the logic is in
+`src/lib/drift/`. Observed on 2026-11-06 with an all-`:read` client, counts
+and shapes only:
+
+- **History reaches back to at least 2023-12-01.** A window from 2023-06-01
+ returned nothing; one from 2023-12-01 had events at its first second, so
+ the true start is somewhere in between and untested.
+- **`channel` is null on every event before July 2025** and `"dashboard"`
+ after; every null-channel event still has a user id. Never filter on
+ `channel`: it drops a year of history. `client.name`, `request_id` and
+ `endpoint` were null on all 5,544 events read, consistent with API writes
+ not being logged.
+- **Target types contain spaces** (`dashboard user`, `lesson progress`,
+ `api v2 client`), and `section` is its own type. A section target id is a
+ lesson id: 28 of 30 section updates matched a `SECTION` lesson in
+ `lessons-meta.json`. So drift reads `lesson`, `section` and `course`.
+- **Lesson fields seen:** `HTML`, `VIDEO`, `QUIZ`, `title`,
+ `description_html`, `is_optional`, `downloadable_content`. Actions beyond
+ `update`: `create`, `delete`, `reorder`, `add`/`remove` (setting or clearing
+ a field, e.g. `add description_html`), `upload`, and on courses `publish`
+ and `clone`.
+- **A course deleted in the dashboard keeps its lessons readable**, as found
+ on 2026-09-29, and the log shows it: of 20 deleted courses with events
+ since 2025-01, 5 had lessons that `GET /v2/lessons/{id}` still returns with their
+ `course_id`. So a lesson that reads back is not proof its course exists;
+ `check:drift` reads the course too.
+- **A pull is identified by its commit subject**, since the nightly bot also
+ authors link-fix commits. The newest commit of any kind is the wrong start:
+ a local commit made after a dashboard edit would hide it. Subject matching
+ errs the safe way. `84b2791c` ("content: attach videos…", 2026-10-28)
+ recorded 22 dashboard video attachments by hand, so they still report as
+ drift from the sync before it.
+- A full read since 2025-01-01 is 8 windows × 3 types plus one GET per
+ lesson or course missing from the tree: 2,794 events, 15 to 85 seconds
+ across two runs.
+
+## Settings writes
+
+Established on 2026-10-28 and 2026-10-29 against throwaway objects published
+only on the staging domain: a course, two lessons in it, and a path. Every
+field was set back afterwards.
+
+- **`PATCH /courses/{id}` is a true partial update.** A body of only
+  `{ "enforce_sequential_navigation": true }` returned 200, and both the
+  response and a separate read changed that field and `modified_at` and
+  nothing else: title, descriptions, labels and the course-time fields were
+  untouched. Setting it back restored the record, apart from `modified_at`.
+- **Published state is not on the course object.** It lives on
+  `/domains/{domain}/published-courses`, and those records did not change.
+- **Do not use `PUT /courses/{id}`.** The spec makes `title`,
+  `short_description` and `enforce_sequential_navigation` required for it, so
+  a settings change by PUT would also rewrite the title and description.
+- **The write bumps `modified_at`.** So a course whose setting is pushed is
+  rescanned once by the next `push`, which is the safe direction.
+- **Skilljar trims strings.** `" x"` is stored as `"x"`, so a read-back
+  comparison of a string field must trim.
+
+Every other field in `PatchedCourseRequest`, and every field in
+`PatchedPublishedCourseRequest`, was then tested the same way: set, read both
+records back, restore, read again.
+
+| Field | Result |
+|---|---|
+| Course: `display_course_and_lesson_time`, `display_manual_course_time` | Round-trip cleanly. They also recompute the read-only `course_time`: with the manual flag on it reads `manual_course_time`. |
+| Course: `labels` | Round-trips cleanly with an existing label; no label was created. **What an unknown label name does is untested** — it may create an organisation-wide label. |
+| Course: `title`, `long_description_html` | Round-trip cleanly. The published record's embedded copy of the course follows. |
+| Course: `short_description`, `manual_course_time` | **Can be set, cannot be cleared:** `""` is a 400, "may not be blank". |
+| Course: `course_and_lesson_time_format` | **Can be set, cannot be cleared:** `null` is a 400, "may not be null". |
+| Published: `hidden`, `strict_enforce_group_visibility`, `registration_required`, `restrict_access_start_end_dates`, `allow_self_service_reenroll`, `unique_progress_per_enrollment`, `require_all_prerequisites` | Round-trip cleanly. |
+| Published: `slug` | Round-trips cleanly; `course_url` follows. |
+| Published: `registration_starts_at`, `registration_ends_at` | **Can be set, cannot be cleared:** `null` and `""` are both a 400. A future start date also closed registration (`offer.registration_open` went false). |
+
+There is no API route to clearing those fields. Tried on 2026-10-29, every
+one against the throwaway course and read back:
+
+- `" "` is a 400 like `""`, because the trim happens before the blank
+  check. `""` for `course_and_lesson_time_format` is a 400, "not a valid
+  choice".
+- The same PATCH sent form-encoded or multipart with empty values returns
+  200 and changes nothing: the empty field is dropped, not applied. A 200
+  here proves nothing.
+- `PUT /courses/{id}` that omits the fields leaves them as they were.
+- `PUT /domains/{d}/published-courses/{id}` is a 400 on the course's own
+  unchanged slug ("A published course with this slug already exists"). A
+  PUT that changes the slug gets past that, but is a 400 on `null` dates
+  and keeps the dates when they are omitted.
+
+Clearing them takes the dashboard. For registration dates, a workaround
+does the job: a window of `2000-01-01T00:00:00Z` to `2099-12-31T23:59:59Z`
+set `offer.registration_open` back to true, though the dates stay on the
+record. Unpublishing and republishing would reset them, but the spec calls
+the unpublish irreversible (new published-course id, enrollments lost), and
+it is untested.
+
+Paths, published paths and lessons, tested the same way:
+
+| Field | Result |
+|---|---|
+| Path (`PATCH /paths/{id}`): `title`, `short_description`, `long_description_html`, `header_html`, `course_name_singular`, `course_name_plural` | Round-trip cleanly. Unlike a course's, a path's `short_description` can be blanked again. The published path's embedded copy of the path follows. |
+| Published path: `hidden`, `strict_enforce_group_visibility`, `unique_progress_per_enrollment` | Round-trip cleanly. |
+| Published path: `slug` | Round-trips cleanly; `path_url` follows. |
+| Lesson (`PATCH /lessons/{id}`): `optional`, `description_html`, `tooltip_html`, `title`, `time_seconds`, `search_keywords`, `display_fullscreen`, `order` | Round-trip cleanly, with no `course_id` needed in the body. `optional` also changes the published course's required-lesson count. `order` moved only the lesson written; the others were not renumbered. |
+
+A path's id and its published-path id are different ids. A path's
+`GET /paths` id is what `PATCH /paths/{id}` takes; the id in
+`/domains/{d}/published-paths` is the published path's own. On some paths
+the two are equal, which hides the difference.
+
+**A path with no visible course on a domain has its registration closed
+there** (`offer.registration_open` false). Recorded on 2026-10-28 by hiding a
+staging path's only course and unhiding it again. So hiding a path's last
+visible course closes the path.
+
+What writes these, and from where:
+
+| Command | Writes | From |
+|---|---|---|
+| `push:course-settings` | `enforce_sequential_navigation`, the two course-time display flags, `labels` | each course's `details.json` |
+| `push:paths` | the six path fields above | each path's `details.json` |
+| `push:lesson-settings` | `optional`, `description_html`, `tooltip_html` | each course's `lessons-meta.json` |
+| `push:published-settings` | `hidden`, `strict_enforce_group_visibility` | each course's and path's `published.json`, per domain |
+
+All four share `src/lib/push/settings.mjs` (planning and read-back) and
+`settings-run.mjs` (branch guard, one prompt, stop at the first failed write).
+Each reads every written record back and fails on a value that did not land
+or any other field that moved. `push:course-settings` allows `course_time` to
+move when a display flag was written, and `push:published-settings` ignores
+`offer.registration_open`, which it warns about before the prompt instead.
+`push:course-settings` refuses labels that `GET /labels` does not list, rather
+than find out what an unknown one does.
+
+Left out on purpose:
+
+- **Fields that cannot be cleared.** A push of one is a change nobody can
+  undo through the API.
+- **Slugs.** Writable, but a change breaks every link to the course or path.
+- **Lesson titles.** `push` already writes them.
+- **Lesson `order`.** Reordering is a different job from flipping a setting.
+- **Lesson `time_seconds`, `search_keywords`, `display_fullscreen`.** No
+  lesson uses them.
+- **The uniform published-course settings** (`registration_required` and the
+  rest). They are the same on every course, so `check:settings` reports the
+  odd one out instead of anyone editing them from git.
+
+Before adding a field, check it is in the matching `Patched…Request` schema in
+the spec, and test it the same way: set it on a throwaway object, read it
+back, diff the whole record and every record that embeds it, set it back.
+`push` does not touch these settings, and its skip-state fingerprint does not
+hash them, so adding them there would force a full rescan of every course
+once.
+
+`check:settings` is read-only. It works out the norm from the catalog, rather
+than hardcoding one organisation's values: when one value covers at least 90%
+of records (`--threshold`), every record with another value is listed. Truly
+split settings such as `hidden` are reported as varying.
+
+## Quiz writes: what the API does, as opposed to what the spec says
+
+Established on 2026-09-28 against throwaway quizzes that were never attached
+to a lesson, then deleted. The spec is wrong or silent on most of this.
+
+- **`PATCH /quiz-questions/{id}` needs `quiz` in the body**, even though the
+  question already belongs to one. Without it, every PATCH is a 400: `You must
+  pass either a quiz or a quiz_question_bank`.
+- **With `quiz`, PATCH edits `html`, `type` and the feedback fields in place.**
+  The question id is unchanged.
+- **Answers cannot be edited.** PATCH and PUT with an `answers` array both
+  return 200 and change nothing. There is no answer endpoint. Changing an
+  answer means deleting the question and creating it again, which gives it a
+  new id.
+- **Order cannot be set.** `order` in a PATCH is also accepted and ignored.
+  Questions are ordered by creation (`order` 10, 20, 30, …), and a recreated
+  question goes to the end. So changing one answer in the middle of a quiz
+  also moves that question to the end, unless everything after it is
+  recreated too.
+- **A 200 does not mean the write happened.** Because of the two points above,
+  every quiz write must be followed by a read that confirms the change, and a
+  mismatch is a failure, not a warning.
+- **Content items cannot be deleted.** `/lessons/{id}/content-items/{id}` has
+  GET, PUT and PATCH and no DELETE, so attaching a quiz to a lesson cannot be
+  undone through the API. Only deleting the lesson or course removes it.
+- **Attaching works:** `POST /lessons/{id}/content-items` with
+  `{ type: 'QUIZ', content_quiz_id, header, order }` returns 201, and the quiz
+  shows in the lesson straight away. `header` must not be blank: `''` is a 400
+  (`This field may not be blank.`), even though items attached in the UI can
+  have an empty header. `push:quizzes --attach` uses the quiz name.
+- **`DELETE /quizzes/{id}` works** and returns 204, then 404 on read.
+- **Deleting a course in the UI leaves its contents behind.** Seen on
+  2026-09-29: after a course was deleted in the dashboard, `GET /courses/{id}`
+  was a 404 and the course had left `GET /courses`. But its lessons still
+  read back with `GET /lessons/{id}`, still listed under
+  `GET /lessons?course_id=`, and still linked their quizzes, and the quizzes
+  were untouched. A quiz is an organisation-level object, so nothing removes
+  it with the course. Since a full pull writes every quiz, including unlinked
+  ones, a deleted course's quizzes keep arriving in the quiz directory. The
+  cleanup is `DELETE /lessons/{id}` for each lesson, which removes its quiz
+  links, then `DELETE /quizzes/{id}` for each quiz nothing else uses. Both
+  return 204, then 404 on read. Pull won't see the orphaned lessons, because it
+  starts from the course list.
+
+### Validate what a run would write, not every file it can see
+
+Skilljar holds quizzes that `push:quizzes`' own rules reject: empty
+descriptions, `LINEAR_SCALE` questions on feedback forms, `MULTIPLE_ANSWER`
+survey questions with no correct answer, empty "Untitled Quiz" shells. A pull
+writes them faithfully. From #25 until the fix, every pulled file was
+validated before anything was compared, so 26 such files, none edited, made
+every run without `--file` fail with "Nothing was written".
+
+So `src/lib/push/quiz-select.mjs` ties validation to writes:
+
+- **Drafts** (`quiz-new-*.json`) are always written, so all of them are
+  validated first, and one bad draft stops the run.
+- **Pulled files** are validated after they are planned against a fresh read,
+  the read push makes anyway, and only matter if the plan has changes. A
+  failure refuses that quiz alone. A file with no changes is never written,
+  so its problems are only a warning. A file skipped through
+  `.syncjar-quiz-state.json` was proven in sync when it was recorded, and is
+  treated the same way.
+
+Don't move pulled-file validation back ahead of the comparison, and don't
+relax the rules for drafts so that pulled files pass. Unsupported types such
+as `LINEAR_SCALE` stay unsupported for writes, because what a POST or PATCH
+does with them has not been established.
+
+### What an edit does to learners who already took the quiz
+
+Established on 2026-09-29 against a test course with one test learner, who
+scored 2 of 3 before each change. Checked in the dashboard, because **the API
+exposes no quiz attempts**: lesson progress has `score` and `max_score`, but
+they stay null for a quiz inside a MODULAR lesson.
+
+| Change | Attempt score and completions | That question's response history | Learner can review their answers |
+|---|---|---|---|
+| PATCH in place (`html`, feedback, `type`) | kept | kept, shown under the new wording | not isolated (see below) |
+| Delete and recreate (the only way to change answers or order) | kept | **lost**: gone from quiz analytics; the new question starts at 0 responses | **no**: "This has been modified since you last took it. As a result, the answers are unavailable." |
+
+So on a quiz learners have taken, recreating a question costs its analytics
+history and learners' ability to review their answers. It does not cost
+scores or completions. Show each recreate, require confirmation for it, and
+never include it in a bulk yes. An in-place PATCH keeps the question's
+history and can be an ordinary prompted change.
+
+Not isolated: whether an in-place PATCH alone also hides the learner's
+answers. The quiz tested had already been recreated, which had hidden them.
+Assume it does, and treat any edit to a taken quiz as ending answer review
+for past attempts.
 
 ## Check the checkout before pushing
 
@@ -242,5 +754,5 @@ Two things to keep in mind:
 
 - The per-user cache never expires. Files are reused indefinitely, so progress
   data goes stale until you delete `public/data/user-progress/`.
-- For a straight roster, `scripts/export-students.mjs` is still the cheaper
+- For a straight roster, `npm run export:students` is still the cheaper
   path: one sweep of `/users` rather than N × (1 + courses) requests.

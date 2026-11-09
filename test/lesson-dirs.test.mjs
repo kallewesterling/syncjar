@@ -7,7 +7,7 @@ import path from 'path';
 import {
   readLessonDirIndex,
   resolveLessonDirName
-} from '../scripts/lesson-dirs.mjs';
+} from '#lib/content/lesson-dirs.mjs';
 
 // Builds a throwaway course directory. `lessonsMeta` is written verbatim as
 // lessons-meta.json, or omitted for a course with none yet.

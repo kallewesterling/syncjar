@@ -8,8 +8,8 @@ const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 async function sourceFiles() {
   const out = [];
-  for (const dir of ['scripts', 'test']) {
-    for (const name of await fs.readdir(path.join(root, dir))) {
+  for (const dir of ['src', 'test']) {
+    for (const name of await fs.readdir(path.join(root, dir), { recursive: true })) {
       if (name.endsWith('.mjs')) out.push(path.join(dir, name));
     }
   }

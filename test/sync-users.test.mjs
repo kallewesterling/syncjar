@@ -4,7 +4,7 @@ import fs from 'fs-extra';
 import os from 'os';
 import path from 'path';
 
-import { readAllCachedUsers } from '../scripts/sync-users.mjs';
+import { readAllCachedUsers } from '../src/commands/sync/users.mjs';
 
 // Builds a throwaway user-progress cache. `records` maps a user id to the
 // object written as that user's JSON file, or to a raw string written

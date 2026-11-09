@@ -9,7 +9,7 @@ import {
   DEFAULT_ALLOWED_BRANCHES,
   getCurrentBranch,
   isBranchAllowed
-} from '../scripts/branch-guard.mjs';
+} from '#lib/branch-guard.mjs';
 
 // Builds a throwaway git repo with one commit, checked out on `branch`.
 // Committer identity is set locally so the test doesn't depend on, or touch,

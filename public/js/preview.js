@@ -51,7 +51,10 @@ async function loadLesson(lessonTitle, courseName) {
   localStorage.setItem('selectedCourse', courseName);
   localStorage.setItem('selectedLesson', lessonTitle);
 
-  lessonTop.innerHTML = `<h2>${lessonTitle}</h2>`;
+  // The title comes from Skilljar, so it goes in as text, never markup.
+  const heading = document.createElement('h2');
+  heading.textContent = lessonTitle;
+  lessonTop.replaceChildren(heading);
 
   const paths = courseData[courseName]['Lessons'][lessonTitle] || [];
 

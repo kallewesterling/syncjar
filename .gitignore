@@ -6,6 +6,7 @@ node_modules
 # it describes this checkout's content against this Skilljar instance, and a
 # missing file just means the next push scans everything.
 .syncjar-push-state.json
+.syncjar-quiz-state.json
 
 # HTML data
 public/courses
@@ -18,6 +19,11 @@ courses-plaintext
 # local sync folders
 local-skilljar
 local-skilljar-paths
+local-skilljar-quizzes
+
+# Preview theme config. Holds a real Skilljar domain and theme URLs, so it is
+# local; copy preview.config.example.json to start one.
+preview.config.json
 
 # OS stuff
 .DS_Store

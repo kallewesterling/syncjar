@@ -14,6 +14,200 @@ and version scheme in `CLAUDE.md`.
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-11-09
+
+### Added
+
+- `whoami` shows which API v2 client is configured, its organisation, token
+  lifetime and scopes, read from the token itself, and which v2 commands it
+  can run, naming the scopes it is missing for the rest. Commands that need
+  the v1 key are listed with whether `SKILLJAR_API_KEY` is set. `--json`
+  prints the same report for scripts. The scopes each command needs live in
+  one table, and a test fails if a v2 command is left out of it.
+
+- `check:drift` lists the lessons and courses edited in the Skilljar
+  dashboard since the last pull, from the v2 audit log (`audit:read`), so
+  that a push does not silently overwrite them. It starts from the newest
+  pull commit in the content repo, or `--since <date or ref>`, reads the log
+  in 90-day windows, and groups edits by course and lesson with content edits
+  first. Exits 2 when anything was edited, so `syncjar check:drift && syncjar
+  push` stops. Read-only, and it leaves dashboard usernames out unless
+  `--show-actors` is passed in a terminal.
+
+- `check:visibility` reports which student groups can see which published
+  courses and paths, per domain, through the v2 API. It says in plain words
+  what each restricted record's settings do, lists what each group unlocks,
+  and flags likely mistakes: overrides on unpublished or deleted courses,
+  records nobody can see, paths whose courses an audience cannot see, and
+  restricted courses inside more widely visible paths. `--json` prints the
+  model and `--out` writes a flat CSV. Read-only.
+
+- A global `syncjar` command (`npm install --global
+  github:kallewesterling/syncjar#main`). Every npm script is a subcommand with
+  the same options, so `syncjar push:quizzes --dry-run` is `npm run
+  push:quizzes -- --dry-run`. `syncjar update [--ref <ref>]` reinstalls from
+  GitHub, and refuses a ref whose `package.json` doesn't provide the command.
+  Credentials are read from `.env` in the current directory, then
+  `~/.config/syncjar/.env`.
+
+- `group:add` and `group:remove` add existing students to a group, and
+  remove them, by email, through Skilljar's v2 API. They authenticate with a
+  scoped OAuth client (`SKILLJAR_CLIENT_ID`, `SKILLJAR_CLIENT_SECRET`), not
+  the v1 key, so they can be run by people who should not hold that key.
+  Dry run by default. `--confirm` asks for a typed confirmation, writes in
+  batches of 100, stops at the first batch that fails, and writes an audit
+  CSV.
+
+- `enroll:add` and `enroll:remove` enroll existing students in a course by
+  email, and deactivate those enrollments (`active: false`; nothing is
+  deleted), through the v2 API. A course published on more than one domain
+  needs `--domain`. Dry runs look up every email and its current enrollment
+  first, and skip students with no account, students already enrolled (or,
+  for a remove, not enrolled), and other cases whose effect is unknown.
+  `--confirm` asks for a typed confirmation, writes in batches of 100, reads
+  every enrollment back, and writes an audit CSV. A student whose enrollment
+  was deactivated is skipped unless `--re-enroll` (a new enrollment, from no
+  progress) or `--restore` (the old one back, with its progress) is passed.
+
+- `export:analytics` exports each course's enrollments, completions,
+  completion rate, certificates and ratings to CSV through the v2 API, with
+  a row per domain on request. Domain names are checked first, since
+  Skilljar's filter returns zeros for one it does not know.
+
+- `export:enrollments` exports one row per enrollment through the v2 API:
+  course, domain, student, dates, progress, score, certificate and source,
+  to `public/data/enrollments.csv`. It narrows by course, Skilljar domain,
+  student email, completion and enrolment date on the server, and by email
+  domain (`--email-domain`, exact, no subdomains) locally, since the API
+  cannot. Rating and feedback text are left out unless `--include-feedback`.
+  An unfiltered or domain-filtered run is cross-checked against the
+  analytics summary, and any failed read stops it before anything is written.
+
+- `group:domains` lists a group's auto-add email domains, and adds or
+  removes them, through the v2 API. Since v2 replaces the whole list, a
+  confirmed run re-reads it before writing and aborts if it changed, then
+  reads it back. Free-mail domains are refused unless
+  `--allow-public-domain` is passed.
+
+- `npm run push:course-settings` pushes course-level settings from each
+  course's `details.json`. Today that is only `enforce_sequential_navigation`
+  ("Enforce sequential navigation" in the dashboard). A dry run is one request
+  and shows each course's before and after. A real run asks once, sends a
+  `PATCH /courses/{id}` per course holding only the changed field, then reads
+  the catalog back and fails if the value did not land or any other field on
+  that course changed. `push` still does not compare or write `details.json`
+  settings.
+- `push:course-settings` also pushes `display_course_and_lesson_time`,
+  `display_manual_course_time` and `labels`. Labels compare without regard to
+  order, and a label that `GET /labels` doesn't list is refused. Fields the
+  API can set but never clear (`short_description`, `manual_course_time`,
+  `course_and_lesson_time_format`) stay out.
+- `npm run push:paths` pushes each path's title, descriptions, header and item
+  naming from its `details.json`, with `PATCH /paths/{id}`.
+- `npm run push:lesson-settings` pushes each lesson's `optional`,
+  `description_html` and `tooltip_html` from `lessons-meta.json`, with
+  `PATCH /lessons/{id}`.
+- `npm run push:published-settings` pushes per-domain `hidden` and
+  `strict_enforce_group_visibility` for courses and paths from
+  `published.json`. It warns before the prompt when a run would hide a path's
+  last visible course, which closes registration on the path.
+- `npm run check:settings` (read-only) lists courses and paths whose settings
+  differ from what at least 90% of the catalog uses. The norm comes from the
+  data, so nothing organisation-specific is hardcoded.
+- All the settings pushes share one planner and one run: compare an allowlist,
+  show every change, prompt once, stop at the first failed write, then read
+  back and fail if a value didn't land or anything else moved.
+- `pull` keeps lesson metadata it used to fetch and discard (`type`,
+  `optional`, `time_seconds`, `search_keywords`, `tooltip_html`,
+  `display_fullscreen` and the `content_*_id` references), and records quiz,
+  asset and rating content items under a new `non_html_items` key. This costs
+  no extra requests. `content_items` is unchanged and still lists only HTML
+  files.
+- `pull` writes quizzes, one `quiz-<id>.json` per quiz, to `QUIZ_CONTENT_PATH`
+  (default `local-skilljar-quizzes/`). A full pull writes every quiz in the
+  organisation; `--course` writes only that course's. It costs two list
+  requests plus one per quiz, and the per-quiz question-bank check is made only
+  when some bank is actually used by a quiz.
+- `npm run push:quizzes` creates quizzes from `quiz-new-*.json` files. It
+  validates every file first (unknown fields are errors), refuses names that
+  already exist, reads each quiz back to verify it, and deletes a half-made
+  quiz on failure. Created quizzes are not attached to lessons.
+- `push:quizzes` pushes edits to pulled `quiz-<id>.json` files. Settings and
+  question text, type and feedback are edited in place. Changing answers or
+  order recreates the affected questions, which needs an interactive yes or
+  `--recreate <quiz_id>`; `--force` never covers it. Every edit is verified,
+  and unchanged quiz files are skipped without a request, using
+  `.syncjar-quiz-state.json`.
+- `push:quizzes --file <draft> --attach <lesson_id>` attaches a newly created
+  quiz to a lesson.
+- `npm run group:audit -- --group <id> --roster <csv>` lists the members of
+  a student group who are not on a roster. It reads, and never writes to,
+  Skilljar in one paginated sweep, and writes a CSV that
+  `group:revoke -- --in` reads directly. It warns when the roster file is
+  older than `--max-age-days` (default 14).
+- npm scripts for the four commands that had none: `export:students`,
+  `check:membership`, `group:audit` and `group:revoke` (formerly
+  `revoke-access.mjs`).
+
+### Changed
+
+- When Syncjar is not running from a clone, default outputs and content trees
+  (`public/data/`, `local-skilljar/`, `local-skilljar-paths/`,
+  `local-skilljar-quizzes/`) resolve against the current directory instead of
+  the install, which `syncjar update` replaces. From a clone nothing moves.
+- `pull:slugs` and `pull:paths` also record `strict_enforce_group_visibility`
+  in each `published.json`. The first pull after upgrading rewrites every
+  `published.json` once to add it.
+- `preview.config.json` is no longer tracked. It held a real Skilljar
+  domain and theme URLs. `preview.config.example.json` is the template, and
+  `serve` previews unstyled when the file is missing. An existing local copy is
+  left in place, but **pulling this change deletes the file from any other
+  clone that has it**. Back it up first.
+- `export:users` takes the internal domain from `--internal-domain` or
+  `SYNCJAR_INTERNAL_DOMAIN` instead of hardcoding one. The CSV column
+  `Chainguard employee` is now `Internal user`, and it is `false` for everyone
+  when no domain is set.
+- `scripts/` is split into `src/commands/`, one file per npm script and named
+  for it (`push:quizzes` is `src/commands/push/quizzes.mjs`), and `src/lib/`,
+  modules that do nothing on import. Every npm script keeps its name, so
+  anything that runs Syncjar through `npm run` is unaffected; anything that
+  called `node scripts/<file>.mjs` directly needs the new path.
+- Library code is imported as `#lib/*` through `package.json` `"imports"`.
+- Default output paths resolve against the repository root through
+  `#lib/paths.mjs` instead of `__dirname/..`.
+- `test/import-without-credentials.test.mjs` covers every module under
+  `src/lib/` by walking the directory, instead of a hand-kept list.
+
+### Fixed
+
+- `push` no longer PUTs a local HTML file over a content item that is not
+  `HTML` upstream. It warns and skips instead, because the PUT sends
+  `type: 'HTML'` and would have replaced a quiz, asset or rating with a page.
+- The `push:quizzes` plan summary strips tags from its excerpts until none
+  are left, rather than in one pass that could splice a new tag together.
+- `push:quizzes` without `--file` no longer refuses to run because of pulled
+  quizzes nobody edited. Since quiz editing landed, every pulled
+  `quiz-<id>.json` had been held to the rules for a new quiz before anything
+  was compared, and Skilljar holds quizzes that break them (empty
+  descriptions, `LINEAR_SCALE` questions, survey questions with no correct
+  answer, empty shells). Pulled files are now validated only when they differ
+  from Skilljar, which is when they would be written. A failure refuses that
+  quiz alone, and an unedited file that would fail is listed as a warning.
+  Drafts are still all validated first, and one bad draft still stops the run.
+- An interrupted pull no longer leaves content files empty. `pull`,
+  `pull:slugs` and `pull:paths` wrote each file by truncating it and then
+  filling it, so a Ctrl+C or a cancelled CI run between the two left a 0-byte
+  file, and pushing that commit would empty the live lesson. Every pull write
+  now goes to a temp file in the same directory and is renamed into place,
+  and the next pull removes any temp files a killed run left. Separately,
+  `pull` no longer replaces a non-empty content file with empty content on
+  one read. It confirms with a single-item read, and keeps the file (exiting
+  non-zero) if Skilljar can't confirm the item is empty.
+- The preview sets the lesson title as text, not HTML, so markup in a title
+  from Skilljar is shown rather than run.
+- `check-links` skips ignored hosts by their parsed hostname, not by a
+  substring anywhere in the URL.
+
 ## [2.0.0] - 2026-09-23
 
 ### Fixed

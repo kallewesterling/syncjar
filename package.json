@@ -1,21 +1,59 @@
 {
   "name": "syncjar",
-  "version": "2.0.0",
-  "main": "index.js",
+  "version": "2.1.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kallewesterling/syncjar.git"
+  },
+  "bin": {
+    "syncjar": "bin/syncjar.mjs"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "public/index.html",
+    "public/css/",
+    "public/js/",
+    "img/",
+    "preview.config.example.json"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "test": "node --test test/*.test.mjs",
-    "pull": "node scripts/sync-skilljar-to-local.mjs",
-    "pull:slugs": "node scripts/pull-slugs.mjs",
-    "pull:paths": "node scripts/pull-paths.mjs",
-    "push": "node scripts/sync-local-to-skilljar.mjs",
-    "generate:courses": "node scripts/generate-courses-json.mjs",
+    "whoami": "node src/commands/whoami.mjs",
+    "pull": "node src/commands/pull/index.mjs",
+    "pull:slugs": "node src/commands/pull/slugs.mjs",
+    "pull:paths": "node src/commands/pull/paths.mjs",
+    "push": "node src/commands/push/index.mjs",
+    "push:quizzes": "node src/commands/push/quizzes.mjs",
+    "push:course-settings": "node src/commands/push/course-settings.mjs",
+    "push:paths": "node src/commands/push/paths.mjs",
+    "push:lesson-settings": "node src/commands/push/lesson-settings.mjs",
+    "push:published-settings": "node src/commands/push/published-settings.mjs",
+    "generate:courses": "node src/commands/generate/courses.mjs",
     "build:preview": "npm run pull && npm run generate:courses",
-    "serve": "node scripts/serve.mjs",
-    "export:plaintext": "node scripts/export-courses-to-md.mjs",
-    "export:users": "node scripts/export-users-to-csv.mjs",
-    "export:metrics": "node scripts/metrics-to-csv.mjs",
-    "check:links": "node scripts/check-links.mjs",
-    "sync:users": "node scripts/sync-users.mjs"
+    "serve": "node src/commands/serve.mjs",
+    "export:plaintext": "node src/commands/export/plaintext.mjs",
+    "export:users": "node src/commands/export/users.mjs",
+    "export:metrics": "node src/commands/export/metrics.mjs",
+    "export:students": "node src/commands/export/students.mjs",
+    "check:links": "node src/commands/check/links.mjs",
+    "check:membership": "node src/commands/check/membership.mjs",
+    "check:settings": "node src/commands/check/settings.mjs",
+    "check:drift": "node src/commands/check/drift.mjs",
+    "check:visibility": "node src/commands/check/visibility.mjs",
+    "sync:users": "node src/commands/sync/users.mjs",
+    "group:audit": "node src/commands/group/audit.mjs",
+    "group:revoke": "node src/commands/group/revoke.mjs",
+    "group:add": "node src/commands/group/add.mjs",
+    "group:remove": "node src/commands/group/remove.mjs",
+    "group:domains": "node src/commands/group/domains.mjs",
+    "enroll:add": "node src/commands/enroll/add.mjs",
+    "enroll:remove": "node src/commands/enroll/remove.mjs",
+    "export:analytics": "node src/commands/export/analytics.mjs",
+    "export:enrollments": "node src/commands/export/enrollments.mjs"
   },
   "author": "",
   "license": "MIT",
@@ -35,5 +73,8 @@
     "node-fetch": "^3.3.2",
     "yargs": "^17.7.2"
   },
-  "type": "module"
+  "type": "module",
+  "imports": {
+    "#lib/*": "./src/lib/*"
+  }
 }

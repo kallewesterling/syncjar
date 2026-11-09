@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { parsePushArgs, resolveFullScan, DEFAULT_CONCURRENCY } from '../scripts/push-args.mjs';
+import { parsePushArgs, resolveFullScan, DEFAULT_CONCURRENCY } from '#lib/push/args.mjs';
 
 // --- the bug this module exists for ---------------------------------------
 
