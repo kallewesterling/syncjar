@@ -373,24 +373,22 @@ that read has content, pull writes it. If it returns `''`, the item really is
 empty, and pull writes the empty file with a warning. If it fails, or returns
 no field, pull keeps the file, warns, and exits 1.
 
-## `modified_at` is not proven to track content edits — keep it non-load-bearing
+## `modified_at` tracks dashboard edits, not API edits — keep it non-load-bearing
 
 `push` skips courses recorded as in sync (`push-state.mjs`), keyed on a local
 content hash *and* the course's upstream `modified_at`. It is tempting to lean
 harder on that timestamp — to skip on it alone, or to use it to decide what to
-pull. Don't, without settling this first.
+pull. Don't: it misses every edit made through the API.
 
-**It has never been established that editing a content item in the Skilljar
-web UI bumps its parent course's `modified_at`.** The obvious place to look is
-the content repo's nightly-sync history, and it cannot answer: across every
-sync commit, no *pre-existing* course has ever had its normalised content
-change upstream. The cell is empty. (The cases that look like evidence are
-newly added courses, where there is no prior record to compare, and
-trailing-newline churn from the pull's own writes, which `normalizeHtml`
-correctly calls unchanged.) Settling it needs a deliberate content-only push
-followed by a read of the course record.
+**A dashboard content edit bumps the course's `modified_at`.** On 2026-11-06
+one word in the HTML block of "Test lesson" on the throwaway "Claude test
+course" was changed in the dashboard and saved. The course's `modified_at`
+in v1 and v2, and the lesson's v2 `modified_at`, all moved to the same
+microsecond as the save, and the item's HTML changed. The audit log recorded
+it as one `HTML` update on the lesson, and `check:drift` reported it. One
+edit, one lesson type (`MODULAR`, HTML item); other item types are untested.
 
-**For edits through the API, it is now settled: they bump nothing.** On
+**For edits through the API, it is settled the other way: they bump nothing.** On
 2026-10-30 a content-only `PUT /v1/lessons/{id}/content-items/{id}` on the
 throwaway "Claude test course" landed (both v1 and v2 read the new HTML back)
 and moved no timestamp at all: not the course's `modified_at` in v1 or v2,
@@ -398,10 +396,11 @@ not the lesson's v2 `modified_at`, and v2's `GET /lessons/?filter[updated_since]
 did not list the lesson. The content was then restored byte for byte. v2
 content items carry no timestamp of their own. So v2's lesson timestamps,
 new as they are, cannot drive an incremental pull either: a `push` from
-another checkout is invisible to them. **Dashboard edits are still
-untested**, and need someone to edit a test lesson in the UI.
+another checkout is invisible to them.
 
-The current design is safe without an answer, because **a skipped course is
+So the timestamp catches dashboard edits and misses API edits, and the audit
+log (below) has the same blind spot. A `push` from another checkout, or any
+other API client, shows up in neither. The current design is safe anyway, because **a skipped course is
 never written to** — the worst a wrong skip does is not report drift, and
 `pull` is what reconciles drift anyway. Any future use of `modified_at` that
 decides to *write*, or to *not pull*, loses that property and needs the

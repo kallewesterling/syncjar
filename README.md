@@ -795,10 +795,9 @@ key can see.
 ### Checking for dashboard edits before a push (API v2)
 
 `push` overwrites Skilljar with the local tree, so a lesson edited in the
-Skilljar dashboard since the last pull loses that edit. Timestamps cannot
-be relied on to catch this: an API content edit moves no `modified_at`, and
-whether a dashboard edit does has never been established.
-`check:drift` reads Skilljar's audit log instead, which records dashboard
+Skilljar dashboard since the last pull loses that edit. A dashboard edit
+does move the course's `modified_at`, but that only says the course changed,
+not what or when relative to the last pull. `check:drift` reads Skilljar's audit log instead, which records dashboard
 actions and not API writes, so a push's own writes never show up in it.
 
 ```bash
