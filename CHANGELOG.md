@@ -14,6 +14,15 @@ and version scheme in `CLAUDE.md`.
 
 ## [Unreleased]
 
+### Added
+
+- A documentation site, built from `docs/` with Jekyll and the Just the Docs
+  theme and published to GitHub Pages from `main`. It covers installing,
+  configuration and credentials, the content workflow, checks, student
+  commands, a command reference, safety and data handling, and notes on how
+  the Skilljar API behaves. Pull requests that touch `docs/` build the site,
+  so a broken internal link fails the PR.
+
 ## [2.1.1] - 2026-11-09
 
 ### Changed

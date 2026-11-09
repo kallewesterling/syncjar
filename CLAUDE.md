@@ -51,6 +51,25 @@ not the work in flight. Nothing had ever been tagged before 2.0.0 — including
 `1.0.0`, which exists only as a `CHANGELOG.md` heading — so treat the tag
 history as starting there.
 
+## The documentation site (`docs/`)
+
+`docs/` is a Jekyll site with the Just the Docs theme, published to
+<https://kallewesterling.github.io/syncjar/> by `.github/workflows/docs.yaml`.
+It deploys from `main` only, because it documents the release people can
+install; a docs change reaches the site with the next merge to `main`. PRs
+that touch `docs/` build it without deploying.
+
+- **It is public and generic.** Write for anyone with a Skilljar
+  instance: no organisation's hostnames, group names, course titles, counts
+  or people. Examples use `example.com` and `courses.example.com`.
+- **Link pages with `{{ site.baseurl }}{% link page.md %}`**, not a bare
+  path. The tag fails the build on a missing page, which is the only link
+  check the site has. GitHub Pages runs Jekyll 3, whose `link` tag does not
+  add `baseurl` itself.
+- **A command change is a docs change.** New options, scopes or behaviour go
+  in the command's page and in `docs/reference/commands.md`, in the same PR.
+- `docs/plans/` holds working notes and is excluded from the build.
+
 ## CRITICAL: never let a raw axios error reach the console
 
 `src/lib/skilljar/client.mjs` authenticates with HTTP Basic using `SKILLJAR_API_KEY`.
