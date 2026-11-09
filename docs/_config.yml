@@ -1,6 +1,6 @@
 title: Syncjar
 description: Edit, preview and sync Skilljar course content from your own machine.
-url: https://kallewesterling.github.io
+url: https://westerling.nu
 baseurl: /syncjar
 
 remote_theme: just-the-docs/just-the-docs@v0.12.0
