@@ -158,6 +158,74 @@ snapshotted before and diffed after (none moved, `modified_at` included):
   that cascades memberships and visibility, so a script that calls it must
   only ever pass an id it created itself.
 
+Reads, observed on 2026-10-30 with an all-`:read` client:
+
+- **`GET /lessons/{id}` carries `content_items`, which the spec omits**:
+  every item with `id`, `type`, `header` and, for HTML, the full
+  `content_html`. The list `GET /lessons/` has `content_html: null` for
+  every `MODULAR` lesson, as v1's does, so content still costs one request
+  per lesson, but one per lesson rather than v1's one per item. All 698
+  lessons read in 47s at concurrency 6, and every HTML item matched v1's
+  byte for byte.
+- **Analytics `filter[domains]` takes domain names, not ids.** A domain id
+  returns zeros rather than an error, so `export:analytics` checks names
+  against `GET /domains/` first. Per-domain enrollments summed exactly to
+  the unfiltered figure across all 74 courses. `rating_count` was 0 on every
+  course: the dashboard's lesson rating blocks are not these ratings.
+
+Enrollments, observed on 2026-11-06 with the same all-`:read` client, for
+`export:enrollments`:
+
+- **An enrollment points at a published course, not a course.** Its
+  relationship is `published-course`, and `filter[course.id]` takes the
+  *course* id: a published-course id returns nothing, not an error. Each
+  row also carries `domain_name`, so the domain needs no extra read; the
+  course needs `GET /published-courses/`, whose records carry
+  `relationships.course`, without any `include`.
+- **`include=student` lists each student once per page**, however many of
+  the page's enrollments are theirs, so join rows to students by id.
+  `listAllV2` keeps only `data`; the export pages with its own reader that
+  keeps `included`. Whether `include=student` needs `students:read` as well
+  as `enrollments:read` is **untested**: this client has every scope.
+- **There is no filter by email domain.** `filter[student.email]` is a
+  whole address (the spec says case-insensitive), so a partner report
+  filters the included emails locally.
+- **The rows reconcile exactly with analytics.** A full sweep, 11,608
+  enrollments in 95s at 100 a page, matched
+  `GET /v2/analytics/courses/{id}` on enrollments, completions and
+  certificates for all 74 courses, with the list's default of active and
+  inactive enrollments alike. Every enrollment's published course was in
+  the published-course list.
+
+Visibility, observed on 2026-11-06 with an all-`:read` client, for
+`check:visibility` (GETs only):
+
+- **The spec's model.** `is_hidden` takes a published course out of the
+  catalog except for allowed groups. A group's override is an allowlist row
+  (`is_visible: true`) or a blocklist row (`false`), so on a hidden course
+  only the allowlist matters and on a visible one only the blocklist. A
+  published path's `group-visibility` is one list whose meaning flips:
+  "allowed on a hidden path, blocked on a visible one".
+  `strict_enforce_group_visibility` is "block access for students the course
+  is not visible to", so it decides whether a direct link still works.
+  Without it, hiding only unlists. None of this has been tested by signing
+  in as a member and a non-member; it is the spec's wording.
+- **`visible_on_catalog` is not the inverse of `is_hidden`.** 106 of 132
+  published courses are neither hidden nor `visible_on_catalog`, and one is
+  both. What it tracks is unknown, so nothing relies on it.
+- **Overrides name published-course ids**, so they are per domain. Path
+  items name published-course ids too, not course ids.
+- **A deleted course can leave its published-course rows behind.**
+  `GET /published-courses/` returned five `live: false` rows with a
+  `…-unpublished-<unix time>` slug. For all five, `GET /courses/{id}` was a
+  404, so `include=course` returns no title for them. Whether the dashboard's
+  delete or its unpublish made them is unknown. Group overrides on them
+  stay: three rows still had some.
+- Every published course and path had `visibility_override_type: GROUP`, and
+  no path had group or category visibility, so `CATEGORY` semantics and path
+  group lists have no live example. `check:visibility` reports `CATEGORY` as
+  not modelled rather than guessing.
+
 `group:add` and `group:remove` were tested the same way, the same day, with
 one real account (the maintainer's) in a throwaway group:
 
@@ -170,6 +238,42 @@ one real account (the maintainer's) in a throwaway group:
   falls back to 5 minutes on the local clock.
 - **Removing a non-member also returns `deleted`**, with the student's id,
   so a remove cannot report who was not in the group.
+
+`enroll:add` and `enroll:remove` were tested on 2026-11-06 and 2026-11-09
+with the maintainer's own account on "Claude test course", published only on
+the staging domain, through a client holding exactly their six scopes. A
+snapshot of the account before and after (student record, all 90 other
+enrollments, both domain memberships) diffed clean:
+
+- **An add** returned 200 and an active enrollment with `channel: api`,
+  `source: assigned`, no expiry. The learner saw the course on their
+  dashboard. No email arrived on the staging domain; the live domain is
+  untested.
+- **A repeat add** for an actively enrolled student is a 207 with a failed
+  row, `already_enrolled`, and changes nothing.
+- **`PATCH /enrollments/` with `active: false`** keeps the enrollment's id,
+  dates and progress (a completed enrollment stays completed). The learner's
+  dashboard shows the course as "Inactive" and a direct lesson link no longer
+  opens. Analytics still counts the enrollment and its completion.
+- **Every published course has `unique_progress_per_enrollment: true`** (and
+  `allow_self_service_reenroll: false`), all 132 of them. So a POST for a
+  student whose enrollment is deactivated is a re-enroll as Skilljar means
+  it: a **new** enrollment with its own id, today's `enrolled_at` and no
+  progress, beside the old one, which stays inactive with its progress. The
+  admin's student page then shows only the new one. That is `--re-enroll`.
+- **The same POST with `expires_at` returned a 207 row `internal_error`**
+  and wrote nothing, so `--re-enroll` refuses `--expires-at`. Whether
+  `expires_at` works on a first enrollment is untested.
+- **`PATCH /enrollments/` with `active: true`** brings the old enrollment
+  back in place: same id, original `enrolled_at`, progress intact. That is
+  `--restore`. It was sent by hand; the command sends the same body.
+- **v2 cannot delete an enrollment, and neither can the dashboard**, which
+  only deactivates. A re-enroll therefore leaves a second row for good, and
+  `--restore` refuses a student with more than one row rather than guess.
+
+Untested, and skipped by the commands: expired enrollments, deactivated
+accounts, students who are not members of the course's domain, and emails
+with no account (a POST might create one).
 
 ## lessons-meta.json: `content_items` means files
 
@@ -305,28 +409,78 @@ that read has content, pull writes it. If it returns `''`, the item really is
 empty, and pull writes the empty file with a warning. If it fails, or returns
 no field, pull keeps the file, warns, and exits 1.
 
-## `modified_at` is not proven to track content edits — keep it non-load-bearing
+## `modified_at` tracks dashboard edits, not API edits — keep it non-load-bearing
 
 `push` skips courses recorded as in sync (`push-state.mjs`), keyed on a local
 content hash *and* the course's upstream `modified_at`. It is tempting to lean
 harder on that timestamp — to skip on it alone, or to use it to decide what to
-pull. Don't, without settling this first.
+pull. Don't: it misses every edit made through the API.
 
-**It has never been established that editing a content item in the Skilljar
-web UI bumps its parent course's `modified_at`.** The obvious place to look is
-the content repo's nightly-sync history, and it cannot answer: across every
-sync commit, no *pre-existing* course has ever had its normalised content
-change upstream. The cell is empty. (The cases that look like evidence are
-newly added courses, where there is no prior record to compare, and
-trailing-newline churn from the pull's own writes, which `normalizeHtml`
-correctly calls unchanged.) Settling it needs a deliberate content-only push
-followed by a read of the course record.
+**A dashboard content edit bumps the course's `modified_at`.** On 2026-11-06
+one word in the HTML block of "Test lesson" on the throwaway "Claude test
+course" was changed in the dashboard and saved. The course's `modified_at`
+in v1 and v2, and the lesson's v2 `modified_at`, all moved to the same
+microsecond as the save, and the item's HTML changed. The audit log recorded
+it as one `HTML` update on the lesson, and `check:drift` reported it. One
+edit, one lesson type (`MODULAR`, HTML item); other item types are untested.
 
-The current design is safe without an answer, because **a skipped course is
+**For edits through the API, it is settled the other way: they bump nothing.** On
+2026-10-30 a content-only `PUT /v1/lessons/{id}/content-items/{id}` on the
+throwaway "Claude test course" landed (both v1 and v2 read the new HTML back)
+and moved no timestamp at all: not the course's `modified_at` in v1 or v2,
+not the lesson's v2 `modified_at`, and v2's `GET /lessons/?filter[updated_since]=`
+did not list the lesson. The content was then restored byte for byte. v2
+content items carry no timestamp of their own. So v2's lesson timestamps,
+new as they are, cannot drive an incremental pull either: a `push` from
+another checkout is invisible to them.
+
+So the timestamp catches dashboard edits and misses API edits, and the audit
+log (below) has the same blind spot. A `push` from another checkout, or any
+other API client, shows up in neither. The current design is safe anyway, because **a skipped course is
 never written to** — the worst a wrong skip does is not report drift, and
 `pull` is what reconciles drift anyway. Any future use of `modified_at` that
 decides to *write*, or to *not pull*, loses that property and needs the
 experiment run first.
+
+## The audit log is the drift signal (`check:drift`)
+
+`GET /v2/audit-events/` (scope `audit:read`) records dashboard actions and
+not API writes, so it answers what `modified_at` cannot: was anything edited
+in the dashboard since the last pull. `check:drift` reads it; the logic is in
+`src/lib/drift/`. Observed on 2026-11-06 with an all-`:read` client, counts
+and shapes only:
+
+- **History reaches back to at least 2023-12-01.** A window from 2023-06-01
+ returned nothing; one from 2023-12-01 had events at its first second, so
+ the true start is somewhere in between and untested.
+- **`channel` is null on every event before July 2025** and `"dashboard"`
+ after; every null-channel event still has a user id. Never filter on
+ `channel`: it drops a year of history. `client.name`, `request_id` and
+ `endpoint` were null on all 5,544 events read, consistent with API writes
+ not being logged.
+- **Target types contain spaces** (`dashboard user`, `lesson progress`,
+ `api v2 client`), and `section` is its own type. A section target id is a
+ lesson id: 28 of 30 section updates matched a `SECTION` lesson in
+ `lessons-meta.json`. So drift reads `lesson`, `section` and `course`.
+- **Lesson fields seen:** `HTML`, `VIDEO`, `QUIZ`, `title`,
+ `description_html`, `is_optional`, `downloadable_content`. Actions beyond
+ `update`: `create`, `delete`, `reorder`, `add`/`remove` (setting or clearing
+ a field, e.g. `add description_html`), `upload`, and on courses `publish`
+ and `clone`.
+- **A course deleted in the dashboard keeps its lessons readable**, as found
+ on 2026-09-29, and the log shows it: of 20 deleted courses with events
+ since 2025-01, 5 had lessons that `GET /v2/lessons/{id}` still returns with their
+ `course_id`. So a lesson that reads back is not proof its course exists;
+ `check:drift` reads the course too.
+- **A pull is identified by its commit subject**, since the nightly bot also
+ authors link-fix commits. The newest commit of any kind is the wrong start:
+ a local commit made after a dashboard edit would hide it. Subject matching
+ errs the safe way. `84b2791c` ("content: attach videos…", 2026-10-28)
+ recorded 22 dashboard video attachments by hand, so they still report as
+ drift from the sync before it.
+- A full read since 2025-01-01 is 8 windows × 3 types plus one GET per
+ lesson or course missing from the tree: 2,794 events, 15 to 85 seconds
+ across two runs.
 
 ## Settings writes
 

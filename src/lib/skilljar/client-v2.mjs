@@ -33,12 +33,7 @@ export const V2_PAGE_SIZE = 100;
  * other request's Authorization header carries a live bearer token.
  */
 export function createSkilljarV2Client({ env = process.env, baseURL = V2_BASE_URL, now = Date.now } = {}) {
-  const clientId = env.SKILLJAR_CLIENT_ID;
-  const clientSecret = env.SKILLJAR_CLIENT_SECRET;
-  if (!clientId || !clientSecret) {
-    throw new Error('SKILLJAR_CLIENT_ID and SKILLJAR_CLIENT_SECRET are not set. Add them to your .env file.');
-  }
-
+  const credentials = v2Credentials(env);
   const auth = attachRetries(axios.create({ baseURL }));
   let token = null;
   let expiresAt = 0;
@@ -46,11 +41,10 @@ export function createSkilljarV2Client({ env = process.env, baseURL = V2_BASE_UR
 
   function accessToken({ force = false } = {}) {
     if (!force && token && now() < expiresAt - TOKEN_MARGIN_MS) return Promise.resolve(token);
-    pending ??= auth
-      .post('/auth/token', { grant_type: 'client_credentials', client_id: clientId, client_secret: clientSecret })
-      .then(({ data }) => {
-        token = data.access_token;
-        expiresAt = now() + data.expires_in * 1000;
+    pending ??= postToken(auth, credentials)
+      .then(({ accessToken: fresh, expiresIn }) => {
+        token = fresh;
+        expiresAt = now() + expiresIn * 1000;
         return token;
       })
       .finally(() => {
@@ -86,6 +80,57 @@ export function createSkilljarV2Client({ env = process.env, baseURL = V2_BASE_UR
   );
 
   return attachRetries(client);
+}
+
+function v2Credentials(env) {
+  const clientId = env.SKILLJAR_CLIENT_ID;
+  const clientSecret = env.SKILLJAR_CLIENT_SECRET;
+  if (!clientId || !clientSecret) {
+    throw new Error('SKILLJAR_CLIENT_ID and SKILLJAR_CLIENT_SECRET are not set. Add them to your .env file.');
+  }
+  return { clientId, clientSecret };
+}
+
+async function postToken(auth, { clientId, clientSecret }) {
+  const { data } = await auth.post('/auth/token', { grant_type: 'client_credentials', client_id: clientId, client_secret: clientSecret });
+  return { accessToken: data.access_token, expiresIn: data.expires_in };
+}
+
+/**
+ * Exchanges the configured client's credentials for one token, outside any
+ * client, for commands that need the token itself rather than a request
+ * made with it. Throws like `createSkilljarV2Client` when the credentials
+ * are not set, and rejects with a redacted error when the exchange fails.
+ *
+ * The token is a live bearer credential: decode it, never print it.
+ *
+ * @returns {Promise<{ accessToken: string, expiresIn: number }>}
+ */
+export function fetchAccessToken({ env = process.env, baseURL = V2_BASE_URL } = {}) {
+  const credentials = v2Credentials(env);
+  return postToken(attachRetries(axios.create({ baseURL })), credentials);
+}
+
+/**
+ * The payload of a v2 access token, decoded locally and not verified. The
+ * token response names no scopes, but the JWT does: `scopes`, `client_id`,
+ * `organization_id`, `iat` and `exp`.
+ *
+ * Errors name what was wrong with the token, never its contents.
+ */
+export function decodeTokenClaims(token) {
+  const parts = typeof token === 'string' ? token.split('.') : [];
+  if (parts.length !== 3) throw new Error('The access token is not a JWT.');
+  let claims;
+  try {
+    claims = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+  } catch {
+    throw new Error('The access token payload could not be decoded.');
+  }
+  if (!claims || typeof claims !== 'object' || Array.isArray(claims)) {
+    throw new Error('The access token payload is not an object.');
+  }
+  return claims;
 }
 
 /**

@@ -22,6 +22,7 @@
   },
   "scripts": {
     "test": "node --test test/*.test.mjs",
+    "whoami": "node src/commands/whoami.mjs",
     "pull": "node src/commands/pull/index.mjs",
     "pull:slugs": "node src/commands/pull/slugs.mjs",
     "pull:paths": "node src/commands/pull/paths.mjs",
@@ -41,12 +42,18 @@
     "check:links": "node src/commands/check/links.mjs",
     "check:membership": "node src/commands/check/membership.mjs",
     "check:settings": "node src/commands/check/settings.mjs",
+    "check:drift": "node src/commands/check/drift.mjs",
+    "check:visibility": "node src/commands/check/visibility.mjs",
     "sync:users": "node src/commands/sync/users.mjs",
     "group:audit": "node src/commands/group/audit.mjs",
     "group:revoke": "node src/commands/group/revoke.mjs",
     "group:add": "node src/commands/group/add.mjs",
     "group:remove": "node src/commands/group/remove.mjs",
-    "group:domains": "node src/commands/group/domains.mjs"
+    "group:domains": "node src/commands/group/domains.mjs",
+    "enroll:add": "node src/commands/enroll/add.mjs",
+    "enroll:remove": "node src/commands/enroll/remove.mjs",
+    "export:analytics": "node src/commands/export/analytics.mjs",
+    "export:enrollments": "node src/commands/export/enrollments.mjs"
   },
   "author": "",
   "license": "MIT",

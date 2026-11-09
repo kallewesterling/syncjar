@@ -16,6 +16,30 @@ and version scheme in `CLAUDE.md`.
 
 ### Added
 
+- `whoami` shows which API v2 client is configured, its organisation, token
+  lifetime and scopes, read from the token itself, and which v2 commands it
+  can run, naming the scopes it is missing for the rest. Commands that need
+  the v1 key are listed with whether `SKILLJAR_API_KEY` is set. `--json`
+  prints the same report for scripts. The scopes each command needs live in
+  one table, and a test fails if a v2 command is left out of it.
+
+- `check:drift` lists the lessons and courses edited in the Skilljar
+  dashboard since the last pull, from the v2 audit log (`audit:read`), so
+  that a push does not silently overwrite them. It starts from the newest
+  pull commit in the content repo, or `--since <date or ref>`, reads the log
+  in 90-day windows, and groups edits by course and lesson with content edits
+  first. Exits 2 when anything was edited, so `syncjar check:drift && syncjar
+  push` stops. Read-only, and it leaves dashboard usernames out unless
+  `--show-actors` is passed in a terminal.
+
+- `check:visibility` reports which student groups can see which published
+  courses and paths, per domain, through the v2 API. It says in plain words
+  what each restricted record's settings do, lists what each group unlocks,
+  and flags likely mistakes: overrides on unpublished or deleted courses,
+  records nobody can see, paths whose courses an audience cannot see, and
+  restricted courses inside more widely visible paths. `--json` prints the
+  model and `--out` writes a flat CSV. Read-only.
+
 - A global `syncjar` command (`npm install --global
   github:kallewesterling/syncjar#main`). Every npm script is a subcommand with
   the same options, so `syncjar push:quizzes --dry-run` is `npm run
@@ -31,6 +55,31 @@ and version scheme in `CLAUDE.md`.
   Dry run by default. `--confirm` asks for a typed confirmation, writes in
   batches of 100, stops at the first batch that fails, and writes an audit
   CSV.
+
+- `enroll:add` and `enroll:remove` enroll existing students in a course by
+  email, and deactivate those enrollments (`active: false`; nothing is
+  deleted), through the v2 API. A course published on more than one domain
+  needs `--domain`. Dry runs look up every email and its current enrollment
+  first, and skip students with no account, students already enrolled (or,
+  for a remove, not enrolled), and other cases whose effect is unknown.
+  `--confirm` asks for a typed confirmation, writes in batches of 100, reads
+  every enrollment back, and writes an audit CSV. A student whose enrollment
+  was deactivated is skipped unless `--re-enroll` (a new enrollment, from no
+  progress) or `--restore` (the old one back, with its progress) is passed.
+
+- `export:analytics` exports each course's enrollments, completions,
+  completion rate, certificates and ratings to CSV through the v2 API, with
+  a row per domain on request. Domain names are checked first, since
+  Skilljar's filter returns zeros for one it does not know.
+
+- `export:enrollments` exports one row per enrollment through the v2 API:
+  course, domain, student, dates, progress, score, certificate and source,
+  to `public/data/enrollments.csv`. It narrows by course, Skilljar domain,
+  student email, completion and enrolment date on the server, and by email
+  domain (`--email-domain`, exact, no subdomains) locally, since the API
+  cannot. Rating and feedback text are left out unless `--include-feedback`.
+  An unfiltered or domain-filtered run is cross-checked against the
+  analytics summary, and any failed read stops it before anything is written.
 
 - `group:domains` lists a group's auto-add email domains, and adds or
   removes them, through the v2 API. Since v2 replaces the whole list, a
