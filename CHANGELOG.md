@@ -14,6 +14,8 @@ and version scheme in `CLAUDE.md`.
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-11-09
+
 ### Added
 
 - `whoami` shows which API v2 client is configured, its organisation, token
