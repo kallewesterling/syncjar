@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://kallewesterling.github.io/syncjar/"><strong>Documentation</strong></a>
+  <a href="https://westerling.nu/syncjar/"><strong>Documentation</strong></a>
 </p>
 
 ---

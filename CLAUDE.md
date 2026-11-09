@@ -54,7 +54,7 @@ history as starting there.
 ## The documentation site (`docs/`)
 
 `docs/` is a Jekyll site with the Just the Docs theme, published to
-<https://kallewesterling.github.io/syncjar/> by `.github/workflows/docs.yaml`.
+<https://westerling.nu/syncjar/> by `.github/workflows/docs.yaml`.
 It deploys from `main` only, because it documents the release people can
 install; a docs change reaches the site with the next merge to `main`. PRs
 that touch `docs/` build it without deploying.
