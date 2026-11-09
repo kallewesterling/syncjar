@@ -40,6 +40,7 @@ import {
   planEnrollments,
   readBackMismatch,
   readBatchResult,
+  reactivateBody,
   resolveCourse,
   writesUnlocked
 } from '#lib/enrollments/enroll-plan.mjs';
@@ -63,7 +64,7 @@ export function parseEnrollArgs(action, argv) {
   if (add) {
     parser
       .option('expires-at', { type: 'string', describe: 'When the new enrollments expire (ISO 8601; a bare date is midnight UTC)' })
-      .option('reactivate', { type: 'boolean', default: false, describe: 'Also send students whose enrollment was deactivated or has expired' });
+      .option('reactivate', { type: 'boolean', default: false, describe: 'Also reactivate deactivated enrollments, in place, keeping their progress' });
   }
   return parser
     .check((a) => {
@@ -113,8 +114,9 @@ const list = (items) => `${items.slice(0, 5).join(', ')}${items.length > 5 ? ', 
 const SKIP_REASONS = {
   skipped_inactive_account: 'have a deactivated Skilljar account',
   skipped_already_enrolled: 'are already enrolled (active)',
-  skipped_deactivated: 'have a deactivated enrollment; pass --reactivate to send them (behaviour not yet verified)',
-  skipped_expired: 'have an expired enrollment; pass --reactivate to send them (behaviour not yet verified)',
+  skipped_deactivated: 'have a deactivated enrollment; pass --reactivate to reactivate it, keeping its progress',
+  skipped_expired: 'have an expired enrollment; reactivating one has not been tested, so do it in the dashboard',
+  skipped_several_enrollments: 'have more than one enrollment in this published course; choose which to reactivate in the dashboard',
   skipped_domain_not_member: 'are not members of the domain; what Skilljar does with them is not yet verified',
   skipped_domain_inactive_member: 'have an inactive membership of the domain; what Skilljar does with them is not yet verified',
   skipped_not_enrolled: 'are not enrolled in the course on this domain',
@@ -136,7 +138,7 @@ export async function runEnroll(action, argv, {
   now = Date.now,
   onApiError
 }) {
-  const { verb, method } = ACTIONS[action];
+  const { verb } = ACTIONS[action];
   const apiError = onApiError ?? ((err, context) => {
     log(fail(`${context}: ${describe(err)}`));
     return 1;
@@ -240,12 +242,22 @@ export async function runEnroll(action, argv, {
     const these = skipped.filter((s) => s.result === result);
     if (these.length) log(warn(`${these.length} students ${reason}: ${list(these.map((s) => s.email))}`));
   }
-  const reactivating = send.filter((s) => s.intent === 'reactivate').length;
-  if (reactivating) log(warn(`${reactivating} of those sent have an inactive enrollment, which the API is to reactivate. Not yet verified.`));
-  if (action === 'remove') {
-    log(muted('  Deactivating keeps the enrollment and its progress; it is not a deletion. Whether it is fully reversible is not yet verified.'));
+  const reactivating = send.filter((s) => s.intent === 'reactivate');
+  if (reactivating.length) {
+    log(muted(`  ${reactivating.length} deactivated enrollment(s) will be reactivated in place, keeping their progress`));
+    if (expiresAt) log(warn('--expires-at applies to new enrollments only, not to reactivated ones.'));
   }
-  log(muted(`  ${Math.ceil(send.length / ENROLL_BATCH_SIZE)} write request(s) of up to ${ENROLL_BATCH_SIZE}\n`));
+  if (action === 'remove') {
+    log(muted('  Deactivating keeps the enrollment and its progress, and ends the learner\'s access; it is not a deletion.'));
+    log(muted('  enroll:add --reactivate undoes it.'));
+  }
+  const jobs = action === 'add'
+    ? [
+        ...chunk(send.filter((s) => s.intent === 'enroll'), ENROLL_BATCH_SIZE).map((batch) => ({ kind: 'add', batch })),
+        ...chunk(reactivating, ENROLL_BATCH_SIZE).map((batch) => ({ kind: 'reactivate', batch }))
+      ]
+    : chunk(send, ENROLL_BATCH_SIZE).map((batch) => ({ kind: 'remove', batch }));
+  log(muted(`  ${jobs.length} write request(s) of up to ${ENROLL_BATCH_SIZE}\n`));
 
   if (!send.length) {
     log(fail('Nobody to send. Nothing to do.'));
@@ -270,16 +282,17 @@ export async function runEnroll(action, argv, {
 
   const responses = new Map();
   let stopped = null;
-  for (const batch of chunk(send, ENROLL_BATCH_SIZE)) {
+  for (const { kind, batch } of jobs) {
     if (stopped) {
       for (const s of batch) responses.set(s.email, { response: 'not_attempted', error: 'an earlier batch failed' });
       continue;
     }
     try {
-      const res = method === 'post'
+      const ids = batch.map((s) => s.enrollment.enrollmentId);
+      const res = kind === 'add'
         ? await client.post('/enrollments/', enrollBody(publishedCourse.id, batch.map((s) => s.email), expiresAt))
-        : await client.patch('/enrollments/', deactivateBody(batch.map((s) => s.enrollment.enrollmentId)));
-      for (const row of readBatchResult(action, batch, res.data)) responses.set(row.email, row);
+        : await client.patch('/enrollments/', kind === 'reactivate' ? reactivateBody(ids) : deactivateBody(ids));
+      for (const row of readBatchResult(kind, batch, res.data)) responses.set(row.email, row);
     } catch (err) {
       stopped = describe(err);
       for (const s of batch) responses.set(s.email, { response: 'request_failed', error: stopped });
@@ -303,7 +316,7 @@ export async function runEnroll(action, argv, {
     if (sent.response === 'not_attempted') return { ...row, result: 'not_attempted' };
     try {
       const after = await stateOf(s);
-      const mismatch = readBackMismatch(action, s, after, { expiresAt });
+      const mismatch = readBackMismatch(action, s, after, { expiresAt: s.intent === 'enroll' ? expiresAt : null });
       return {
         ...row,
         enrollment_id: row.enrollment_id || after.enrollmentId || '',
