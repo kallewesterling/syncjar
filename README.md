@@ -8,6 +8,10 @@
   The local-first Skilljar workflow tool for developers, course authors, and content pros.
 </p>
 
+<p align="center">
+  <a href="https://westerling.nu/syncjar/"><strong>Documentation</strong></a>
+</p>
+
 ---
 
 **Syncjar** is a command-line tool that lets you pull, edit, preview, and sync course content from [Skilljar](https://www.skilljar.com/) — all from your local development environment.
@@ -332,7 +336,7 @@ commands need an OAuth client with `courses:read`, `published-courses:read`,
 
 ```bash
 # Dry run: reads only, and shows who would be enrolled and who is skipped
-syncjar enroll:add --course "Intro to Chainguard" --domain courses.example.com --in acme.csv
+syncjar enroll:add --course "Getting started" --domain courses.example.com --in acme.csv
 
 # Do it, with an expiry: asks you to type "enroll <n>" first
 syncjar enroll:add --course <id> --domain courses.example.com --in acme.csv --expires-at 2027-01-31 --confirm
