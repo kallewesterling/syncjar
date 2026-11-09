@@ -239,6 +239,42 @@ one real account (the maintainer's) in a throwaway group:
 - **Removing a non-member also returns `deleted`**, with the student's id,
   so a remove cannot report who was not in the group.
 
+`enroll:add` and `enroll:remove` were tested on 2026-11-06 and 2026-11-09
+with the maintainer's own account on "Claude test course", published only on
+the staging domain, through a client holding exactly their six scopes. A
+snapshot of the account before and after (student record, all 90 other
+enrollments, both domain memberships) diffed clean:
+
+- **An add** returned 200 and an active enrollment with `channel: api`,
+  `source: assigned`, no expiry. The learner saw the course on their
+  dashboard. No email arrived on the staging domain; the live domain is
+  untested.
+- **A repeat add** for an actively enrolled student is a 207 with a failed
+  row, `already_enrolled`, and changes nothing.
+- **`PATCH /enrollments/` with `active: false`** keeps the enrollment's id,
+  dates and progress (a completed enrollment stays completed). The learner's
+  dashboard shows the course as "Inactive" and a direct lesson link no longer
+  opens. Analytics still counts the enrollment and its completion.
+- **Every published course has `unique_progress_per_enrollment: true`** (and
+  `allow_self_service_reenroll: false`), all 132 of them. So a POST for a
+  student whose enrollment is deactivated is a re-enroll as Skilljar means
+  it: a **new** enrollment with its own id, today's `enrolled_at` and no
+  progress, beside the old one, which stays inactive with its progress. The
+  admin's student page then shows only the new one. That is `--re-enroll`.
+- **The same POST with `expires_at` returned a 207 row `internal_error`**
+  and wrote nothing, so `--re-enroll` refuses `--expires-at`. Whether
+  `expires_at` works on a first enrollment is untested.
+- **`PATCH /enrollments/` with `active: true`** brings the old enrollment
+  back in place: same id, original `enrolled_at`, progress intact. That is
+  `--restore`. It was sent by hand; the command sends the same body.
+- **v2 cannot delete an enrollment, and neither can the dashboard**, which
+  only deactivates. A re-enroll therefore leaves a second row for good, and
+  `--restore` refuses a student with more than one row rather than guess.
+
+Untested, and skipped by the commands: expired enrollments, deactivated
+accounts, students who are not members of the course's domain, and emails
+with no account (a POST might create one).
+
 ## lessons-meta.json: `content_items` means files
 
 Every entry in a lesson's `content_items` names an HTML file, and every

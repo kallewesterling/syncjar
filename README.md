@@ -175,8 +175,8 @@ next `syncjar update` replaces. The preview commands (`serve`,
 | `npm run group:domains -- --group-name <name> [--add <domain>] [--remove <domain>]` | List or change a group's auto-add email domains (API v2; dry run unless `--confirm`) |
 | `npm run whoami -- [--json]` | Show the API v2 client's scopes and which commands it can run (read-only) |
 
-| `npm run enroll:add -- --course <id\|title> [--domain <name>] --in <csv>` | Enroll existing students in a course, by email (API v2; dry run unless `--confirm`; **writes not yet live-tested**) |
-| `npm run enroll:remove -- --course <id\|title> [--domain <name>] --in <csv>` | Deactivate students' enrollments in a course, by email (API v2; dry run unless `--confirm`; **writes not yet live-tested**) |
+| `npm run enroll:add -- --course <id\|title> [--domain <name>] --in <csv>` | Enroll existing students in a course, by email (API v2; dry run unless `--confirm`) |
+| `npm run enroll:remove -- --course <id\|title> [--domain <name>] --in <csv>` | Deactivate students' enrollments in a course, by email (API v2; dry run unless `--confirm`) |
 | `npm test` | Run the unit tests |
 
 ### Group membership (API v2)
@@ -312,17 +312,13 @@ domains and course visibility (see [Group membership](#group-membership-api-v2))
 The scopes each command needs are listed in `src/lib/skilljar/v2-scopes.mjs`,
 and the tests fail if a v2 command is missing from it.
 
-### Course enrollments (API v2) — writes not yet live-tested
-
-> **The write path of `enroll:add` and `enroll:remove` has never been run
-> against Skilljar.** It was built from the v2 spec and tested against fakes.
-> Until the live test below has been done, `--confirm` refuses to run unless
-> `SYNCJAR_ENROLL_WRITES=1` is set as well. Dry runs are reads only, and safe.
+### Course enrollments (API v2)
 
 `enroll:add` enrolls existing students in a course by email, and
 `enroll:remove` deactivates their enrollments. A deactivated enrollment is
 not deleted: it keeps its progress, and v2 has no way to delete an
-enrollment. Neither command uses `PATCH /enrollments/completion`, which would
+enrollment, but the learner loses access and the course shows as "Inactive"
+on their dashboard. Analytics still counts it. Neither command uses `PATCH /enrollments/completion`, which would
 mark learners as having completed a course they did not complete. The
 commands need an OAuth client with `courses:read`, `published-courses:read`,
 `domains:read`, `students:read`, `enrollments:read` and `enrollments:write`.
@@ -336,7 +332,21 @@ syncjar enroll:add --course <id> --domain courses.example.com --in acme.csv --ex
 
 # Deactivate: asks you to type "unenroll <n>" first
 syncjar enroll:remove --course <id> --domain courses.example.com --email a@acme.com --confirm
+
+# Someone deactivated wants back in: a fresh start, or their old progress
+syncjar enroll:add --course <id> --email a@acme.com --re-enroll --confirm
+syncjar enroll:add --course <id> --email a@acme.com --restore --confirm
 ```
+
+Every published course keeps progress per enrollment
+(`unique_progress_per_enrollment`), so the two differ. `--re-enroll` gives
+the student a new enrollment that starts from no progress, and the old one
+stays as history: the admin's student page then shows only the new one,
+while the API still returns both. `--restore` makes the old enrollment
+active again, with its progress, as if it had never been deactivated, and
+refuses a student who already has more than one enrollment in the course.
+`--expires-at` cannot be combined with `--re-enroll`, because Skilljar
+answers that with an internal error, and it does not apply to a restore.
 
 An enrollment belongs to a course *on one domain*, so `--domain` is required
 when the course is published on more than one. `--course` takes the v2
@@ -356,123 +366,18 @@ some emails are skipped:
 | Not enrolled | — | ✓ |
 | More than one active enrollment in the course on that domain | — | ✓ |
 
-The domain-member and deactivated-account skips stay until the live test
-shows what Skilljar does with those students. A confirmed run sends batches
-of 100 and stops at the first batch that fails as a whole. Afterwards it
-reads every student's enrollment back: a row counts as done only when the
-read-back matches what was meant (active, with the requested expiry, for an
-add; the targeted enrollment inactive for a remove). The audit CSV in
+The expired-enrollment, domain-member and deactivated-account skips stay
+until someone tests what Skilljar does with those students. A confirmed run
+sends batches of 100 and stops at the first batch that fails as a whole.
+Afterwards it reads every student's enrollment back: a row counts as done
+only when the read-back matches what was meant (a new active enrollment,
+with the requested expiry; the old enrollment active again and alone, for a
+restore; the targeted enrollment inactive, for a remove). The audit CSV in
 `public/data/` records each email's state before and after, including the
 learner's progress. It holds names and addresses, so delete it when you are
 done.
 
 Paths have no enrollments in v2; these commands handle courses only.
-
-#### Live test plan
-
-Run this once, by the maintainer, with your own account only, on a
-throwaway course that is published **only on the staging domain** and has at
-least one lesson. "Claude test course" qualifies. Use an OAuth client with
-exactly the six scopes above. Run everything from a clone, so that
-`#lib/...` resolves for the one-off reads.
-
-What it must establish, which nothing so far has:
-
-1. Whether a confirmed add enrolls the student, with `channel` `api`, and
-   whether Skilljar emails the learner.
-2. How a `POST` reports a student who is already enrolled: a failed row
-   `already_enrolled` (207), or `succeeded` with the original enrollment.
-3. What `active: false` does: whether the learner loses access, whether
-   progress and `completed_at` are kept, and whether analytics counts change.
-4. What a `POST` does for a deactivated enrollment ("reactivation" in the
-   spec): the same enrollment id or a new row, whether progress is kept,
-   whether `enrolled_at` changes, and whether `expires_at` is applied.
-5. Whether anything else moved: the student record, domain memberships,
-   other enrollments.
-
-Steps:
-
-1. **Snapshot.** Save your own state, to compare against at the end:
-
-   ```bash
-   node --input-type=module -e "
-   import fs from 'node:fs';
-   import { createSkilljarV2Client, listAllV2 } from '#lib/skilljar/client-v2.mjs';
-   const c = createSkilljarV2Client(); const me = 'you@example.com';
-   const { data: s } = await c.get('/students/', { params: { 'filter[email]': me } });
-   const snap = { student: s.data,
-     enrollments: await listAllV2(c, '/enrollments/', { 'filter[student.email]': me }),
-     memberships: await listAllV2(c, '/students/' + s.data[0].id + '/relationships/domain-memberships/') };
-   fs.mkdirSync('public/data', { recursive: true });
-   fs.writeFileSync('public/data/enroll-test-' + process.argv[1] + '.json', JSON.stringify(snap, null, 2));
-   " before
-   ```
-
-   Also note the course's enrollment count from
-   `GET /analytics/courses/<course id>?filter[domains]=<staging domain>`.
-2. **Dry run the add.** `syncjar enroll:add --course <id> --email <you>`.
-   It should plan `enroll 1`, with you `now not_enrolled`. If you are already
-   enrolled, use a different throwaway course.
-3. **Add.** The same command with `--confirm` and `SYNCJAR_ENROLL_WRITES=1`;
-   type `enroll 1`. Check: exit 0; the audit row reads `enrolled` with
-   `after` `active`; `GET /enrollments/<enrollment_id>` has `active` true,
-   `expires_at` null, `channel` and `source` (record both); the course is on
-   your learner dashboard on the staging domain; whether an email arrived.
-4. **Add again, sent directly.** The command skips you now (dry run:
-   `already enrolled`), so to learn finding 2, send one row yourself:
-
-   ```bash
-   node --input-type=module -e "
-   import { createSkilljarV2Client } from '#lib/skilljar/client-v2.mjs';
-   const c = createSkilljarV2Client();
-   try {
-     const r = await c.post('/enrollments/', { published_course_id: '<published course id>', data: [{ type: 'enrollments', attributes: { email: '<you>' } }] });
-     console.log(r.status, JSON.stringify(r.data, null, 2));
-   } catch (e) { console.log(e.response?.status, JSON.stringify(e.response?.data)); }
-   "
-   ```
-
-   Record the status, the row's `status` and `error.code`, and whether the
-   enrollment id and `enrolled_at` match step 3's. Read it back: still one
-   active row?
-5. **Make progress.** As the learner, complete one lesson. Check that
-   `GET /enrollments/<id>` shows `progress_status` `in_progress`, and note
-   `score` and `completed_at`.
-6. **Dry run, then confirm, the remove.**
-   `syncjar enroll:remove --course <id> --email <you>` should plan
-   `deactivate`, `now active, in_progress`. With `--confirm`, type
-   `unenroll 1`. Check: the audit row reads `deactivated`; the enrollment
-   reads `active` false with the same `progress_status` and `completed_at`;
-   whether the course is still on your dashboard and whether its URL still
-   opens it; the analytics enrollment count compared with step 1; whether an
-   email arrived.
-7. **Re-run both dry runs.** `enroll:remove` should skip you as already
-   inactive, and `enroll:add` as `deactivated enrollment; pass --reactivate`.
-8. **Reactivate, with an expiry.**
-   `syncjar enroll:add --course <id> --email <you> --reactivate --expires-at <tomorrow> --confirm`,
-   type `enroll 1`. Check: the audit row's `enrollment_id` against step 3's
-   (same row or a new one); `GET /enrollments/?filter[student.email]=<you>&filter[course.id]=<id>`
-   (one row or two); `progress_status` (kept or reset); `enrolled_at`;
-   `expires_at` (the read-back fails the row if it was not applied, which is
-   itself the finding); access and email as before.
-9. **Leave it deactivated.** Run step 6's confirmed remove again, so the
-   test ends with your enrollment inactive. v2 cannot delete an enrollment;
-   if you want it gone, unenroll yourself in the dashboard.
-10. **Compare.** Take a second snapshot (`... " after`) and diff the two.
-    Only this course's enrollment should differ. The student record and
-    domain memberships should be identical.
-11. **Clean up.** Delete `public/data/enroll-test-*.json` and the
-    `enroll-*-audit-*.csv` files.
-
-Not covered, on purpose: what a `POST` does with an email that has no
-account (it may create one, and the commands never send such an email), and
-students who are not members of the domain (that needs a second account).
-Both stay skipped until someone tests them separately.
-
-Once the steps pass, record the findings in `CLAUDE.md` next to the
-`group:add` ones, remove the `SYNCJAR_ENROLL_WRITES` guard
-(`writesUnlocked` in `src/lib/enrollments/enroll-plan.mjs` and its check in
-`enroll-run.mjs`), and drop "not yet live-tested" from this section.
 
 ## 🗃 Course Directory Names
 

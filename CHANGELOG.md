@@ -63,9 +63,9 @@ and version scheme in `CLAUDE.md`.
   first, and skip students with no account, students already enrolled (or,
   for a remove, not enrolled), and other cases whose effect is unknown.
   `--confirm` asks for a typed confirmation, writes in batches of 100, reads
-  every enrollment back, and writes an audit CSV. **The write path has not
-  been tested against Skilljar yet**, so `--confirm` also needs
-  `SYNCJAR_ENROLL_WRITES=1` until it has; the README has the live test plan.
+  every enrollment back, and writes an audit CSV. A student whose enrollment
+  was deactivated is skipped unless `--re-enroll` (a new enrollment, from no
+  progress) or `--restore` (the old one back, with its progress) is passed.
 
 - `export:analytics` exports each course's enrollments, completions,
   completion rate, certificates and ratings to CSV through the v2 API, with

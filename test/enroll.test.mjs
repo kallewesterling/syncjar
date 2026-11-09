@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  ENROLL_WRITES_ENV,
   choosePublishedCourse,
   deactivateBody,
   domainMembership,
@@ -13,18 +12,11 @@ import {
   planEnrollments,
   readBackMismatch,
   readBatchResult,
-  resolveCourse,
-  writesUnlocked
+  resolveCourse
 } from '#lib/enrollments/enroll-plan.mjs';
 import { runEnroll } from '#lib/enrollments/enroll-run.mjs';
 
 const NOW = Date.parse('2026-11-06T12:00:00Z');
-
-test('the write path stays locked unless the env variable is exactly 1', () => {
-  assert.equal(writesUnlocked({}), false);
-  assert.equal(writesUnlocked({ [ENROLL_WRITES_ENV]: 'true' }), false);
-  assert.equal(writesUnlocked({ [ENROLL_WRITES_ENV]: '1' }), true);
-});
 
 test('--expires-at must be a date in the future', () => {
   assert.deepEqual(parseExpiresAt('2027-01-31', NOW), { iso: '2027-01-31T00:00:00.000Z' });
@@ -239,14 +231,13 @@ const studentsFor = (n) => Object.fromEntries(Array.from({ length: n }, (_, i) =
   `p${i}@example.com`, { id: `s${i}`, attributes: { first_name: 'P', last_name: String(i), is_inactive: false } }
 ]));
 
-function harness({ argv, answer, env = { [ENROLL_WRITES_ENV]: '1' }, ...client }) {
+function harness({ argv, answer, ...client }) {
   const fake = fakeClient(client);
   const lines = [];
   const written = {};
   const prompts = [];
   const deps = {
     client: fake,
-    env,
     log: (l) => lines.push(l),
     prompt: async (q) => { prompts.push(q); return answer; },
     readFile: async () => { throw new Error('no file'); },
@@ -259,15 +250,8 @@ function harness({ argv, answer, env = { [ENROLL_WRITES_ENV]: '1' }, ...client }
 
 const writes = (client) => client.calls.filter(([m]) => m !== 'GET');
 
-test('--confirm without the env variable refuses before making any request', async () => {
-  const h = harness({ argv: { email: ['p0@example.com'], confirm: true }, students: studentsFor(1), env: {} });
-  assert.equal(await h.run('add'), 1);
-  assert.deepEqual(h.client.calls, []);
-  assert.match(h.out(), /locked: its write path has not yet been verified/);
-});
-
 test('a dry run reads everything, skips unknown emails, and writes nothing', async () => {
-  const h = harness({ argv: { course: 'intro', email: ['P0@example.com', 'p1@example.com', 'nobody@example.com'] }, students: studentsFor(2), enrollments: [row('e9', { studentId: 's1' })], env: {} });
+  const h = harness({ argv: { course: 'intro', email: ['P0@example.com', 'p1@example.com', 'nobody@example.com'] }, students: studentsFor(2), enrollments: [row('e9', { studentId: 's1' })] });
   assert.equal(await h.run('add'), 0);
   assert.deepEqual(writes(h.client), []);
   assert.deepEqual(h.prompts, []);

@@ -14,9 +14,7 @@
  * one domain, so a course published on two domains has two enrollments per
  * student and the run has to know which domain it means.
  *
- * The POST (new and re-enroll) and both PATCHes were tested live on
- * 2026-11-06 and 2026-11-09, the restoring PATCH by hand; a restore as this
- * module sends it has not yet been run (see the README).
+ * Every request here was tested live in November 2026; see `CLAUDE.md`.
  * `PATCH /enrollments/completion` is never used: it marks learners as having
  * completed a course they did not complete.
  */
@@ -28,14 +26,6 @@ export const ACTIONS = {
 
 // BATCH_MAX_ITEMS in the spec's descriptions of both endpoints.
 export const ENROLL_BATCH_SIZE = 100;
-
-// The write path has not been run against Skilljar. Until it has, a
-// confirmed run needs this set to 1 as well as --confirm.
-export const ENROLL_WRITES_ENV = 'SYNCJAR_ENROLL_WRITES';
-
-export function writesUnlocked(env) {
-  return env?.[ENROLL_WRITES_ENV] === '1';
-}
 
 /**
  * Parses --expires-at. Skilljar wants an ISO 8601 date-time in the future

@@ -7,9 +7,7 @@
  * courses:read, published-courses:read, domains:read, students:read,
  * enrollments:read and enrollments:write.
  *
- * DRY RUN BY DEFAULT. Nothing is written without --confirm, and until the
- * write path has been tested against Skilljar, not without
- * SYNCJAR_ENROLL_WRITES=1 either.
+ * DRY RUN BY DEFAULT. Nothing is written without --confirm.
  *
  *   syncjar enroll:remove --course "Intro to Chainguard" --domain courses.example.com --in emails.csv
  *   syncjar enroll:remove --course <id> --email someone@example.com --confirm

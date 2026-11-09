@@ -6,9 +6,7 @@
  * enrollment in that published course and, for an add, their domain
  * membership. What it prints is what a real run would send.
  *
- * With --confirm, and SYNCJAR_ENROLL_WRITES=1 until the write path has been
- * tested against Skilljar, it asks for the action and count to be typed
- * back, sends the batches, stops at the first batch that fails as a whole,
+ * With --confirm, it asks for the action and count to be typed back, sends the batches, stops at the first batch that fails as a whole,
  * reads every student's enrollment back, and writes an audit CSV of every
  * email either way.
  */
@@ -28,7 +26,6 @@ import {
   ACTIONS,
   AUDIT_FIELDS,
   ENROLL_BATCH_SIZE,
-  ENROLL_WRITES_ENV,
   SUCCESS_RESULTS,
   choosePublishedCourse,
   deactivateBody,
@@ -41,8 +38,7 @@ import {
   readBackMismatch,
   readBatchResult,
   resolveCourse,
-  restoreBody,
-  writesUnlocked
+  restoreBody
 } from '#lib/enrollments/enroll-plan.mjs';
 
 const LOOKUP_CONCURRENCY = 4;
@@ -132,7 +128,6 @@ const SKIP_REASONS = {
  */
 export async function runEnroll(action, argv, {
   client,
-  env = process.env,
   log = console.log,
   prompt = askTyped,
   readFile = fs.readFile,
@@ -145,13 +140,6 @@ export async function runEnroll(action, argv, {
     log(fail(`${context}: ${describe(err)}`));
     return 1;
   });
-
-  if (argv.confirm && !writesUnlocked(env)) {
-    log(fail(`enroll:${action} --confirm is locked: its write path has not yet been verified against Skilljar.`));
-    log(muted('  It was built from the API spec and tested against fakes only. Run it without --confirm for a dry run,'));
-    log(muted(`  or set ${ENROLL_WRITES_ENV}=1 if you are running the live test on a throwaway course.`));
-    return 1;
-  }
 
   let expiresAt = null;
   if (argv.expiresAt != null) {
