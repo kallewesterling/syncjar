@@ -19,7 +19,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
-import { parse } from 'json2csv';
+import { toCsv } from '#lib/csv.mjs';
 import { workRoot } from '#lib/paths.mjs';
 import { mapWithConcurrency } from '#lib/concurrency.mjs';
 import { failCleanly } from '#lib/skilljar/client.mjs';
@@ -92,7 +92,7 @@ const rows = await mapWithConcurrency(jobs, CONCURRENCY, async ({ course, domain
 if (process.stdout.isTTY) process.stdout.write('\n');
 
 await fs.ensureDir(path.dirname(argv.out));
-await fs.writeFile(argv.out, parse(sortRows(rows), { fields: ANALYTICS_FIELDS }));
+await fs.writeFile(argv.out, toCsv(sortRows(rows), { fields: ANALYTICS_FIELDS }));
 
 const { totals, mismatches } = summarise(rows, domains);
 console.log(ok(`${courses.length} courses${domains.length ? ` × ${domains.length + 1} views` : ''} written to ${argv.out}`));

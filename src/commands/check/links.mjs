@@ -2,7 +2,6 @@ import fs from 'fs-extra';
 import path from 'path';
 import { repoRoot } from '#lib/paths.mjs';
 import { glob } from 'glob';
-import fetch from 'node-fetch';
 import { JSDOM } from 'jsdom';
 
 const coursesPath = path.join(repoRoot, 'public', 'courses');
@@ -56,7 +55,7 @@ const result = {};
 
 for (const [link, sources] of allLinks.entries()) {
   try {
-    const res = await fetch(link, { method: 'HEAD', timeout: 5000 });
+    const res = await fetch(link, { method: 'HEAD', signal: AbortSignal.timeout(5000) });
 
     if (res.status !== 200) {
       result[link] = {

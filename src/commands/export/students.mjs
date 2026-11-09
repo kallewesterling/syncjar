@@ -29,7 +29,7 @@ import path from 'path';
 import { workRoot } from '#lib/paths.mjs';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
-import { parse } from 'json2csv';
+import { toCsv } from '#lib/csv.mjs';
 import chalk from 'chalk';
 import { createSkilljarClient, failCleanly } from '#lib/skilljar/client.mjs';
 
@@ -130,7 +130,7 @@ for (const entry of entries) {
 rows.sort((a, b) => a.email.localeCompare(b.email));
 
 await fs.ensureDir(path.dirname(argv.out));
-await fs.writeFile(argv.out, parse(rows));
+await fs.writeFile(argv.out, toCsv(rows));
 
 console.log(chalk.green(`✓ ${rows.length} students written to ${argv.out}`));
 console.log(`   ${entries.length} total records from the API`);

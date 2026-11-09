@@ -25,7 +25,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
-import { parse } from 'json2csv';
+import { toCsv } from '#lib/csv.mjs';
 import { workRoot } from '#lib/paths.mjs';
 import { mapWithConcurrency } from '#lib/concurrency.mjs';
 import { failCleanly } from '#lib/skilljar/client.mjs';
@@ -178,7 +178,7 @@ if (argv.check && canCrossCheck({ emails, emailDomains, since })) {
 
 const fields = argv.includeFeedback ? [...ENROLLMENT_FIELDS, ...FEEDBACK_FIELDS] : ENROLLMENT_FIELDS;
 await fs.ensureDir(path.dirname(argv.out));
-await fs.writeFile(argv.out, parse(rows, { fields }));
+await fs.writeFile(argv.out, toCsv(rows, { fields }));
 
 const total = { enrollments: 0, completions: 0, certificates: 0 };
 console.log(ok(`${rows.length} enrollments written to ${argv.out}`));

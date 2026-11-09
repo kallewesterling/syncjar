@@ -14,7 +14,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import readline from 'node:readline/promises';
 import yargs from 'yargs';
-import { parse } from 'json2csv';
+import { toCsv } from '#lib/csv.mjs';
 import { workRoot } from '#lib/paths.mjs';
 import { mapWithConcurrency } from '#lib/concurrency.mjs';
 import { failCleanly } from '#lib/skilljar/client.mjs';
@@ -351,7 +351,7 @@ export async function runEnroll(action, argv, {
 
   const stamp = new Date(now()).toISOString().replace(/[:.]/g, '-');
   const auditPath = path.join(argv.auditDir, `enroll-${action}-audit-${stamp}.csv`);
-  await writeFile(auditPath, parse(audit, { fields: AUDIT_FIELDS }));
+  await writeFile(auditPath, toCsv(audit, { fields: AUDIT_FIELDS }));
 
   const count = (result) => rows.filter((r) => r.result === result).length;
   const failed = rows.filter((r) => !SUCCESS_RESULTS.has(r.result));

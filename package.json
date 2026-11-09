@@ -18,7 +18,7 @@
     "preview.config.example.json"
   ],
   "engines": {
-    "node": ">=20"
+    "node": ">=20.19"
   },
   "scripts": {
     "test": "node --test test/*.test.mjs",
@@ -59,18 +59,17 @@
   "license": "MIT",
   "description": "Edit, preview, and sync Skilljar course content locally.",
   "dependencies": {
+    "@json2csv/plainjs": "^7.0.8",
     "axios": "^1.8.4",
     "chalk": "^5.4.1",
     "date-fns": "^4.1.0",
     "diff": "^7.0.0",
     "dotenv": "^16.4.7",
     "fs-extra": "^11.3.0",
-    "glob": "^11.0.1",
+    "glob": "^14.0.4",
     "html-to-text": "^9.0.5",
     "inquirer": "^12.5.0",
-    "jsdom": "^26.0.0",
-    "json2csv": "^6.0.0-alpha.2",
-    "node-fetch": "^3.3.2",
+    "jsdom": "^29.1.1",
     "yargs": "^17.7.2"
   },
   "type": "module",
