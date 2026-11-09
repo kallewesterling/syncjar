@@ -14,9 +14,9 @@
  * one domain, so a course published on two domains has two enrollments per
  * student and the run has to know which domain it means.
  *
- * The POST and the deactivating PATCH were tested live on 2026-11-06 and
- * 2026-11-09, and a reactivating PATCH sent by hand; the reactivation as
- * this module sends it has not yet been run (see the README).
+ * The POST (new and re-enroll) and both PATCHes were tested live on
+ * 2026-11-06 and 2026-11-09, the restoring PATCH by hand; a restore as this
+ * module sends it has not yet been run (see the README).
  * `PATCH /enrollments/completion` is never used: it marks learners as having
  * completed a course they did not complete.
  */
@@ -140,19 +140,21 @@ export function domainMembership(memberships, domainId) {
  * enrollment, domain }`, where `enrollment` is from `enrollmentState` and
  * `domain` from `domainMembership` (add only).
  *
- * Add sends students with no enrollment (a POST), and with `reactivate`
- * those with one deactivated enrollment (a PATCH of that enrollment). A POST
- * for a student whose enrollment is inactive does not reactivate it: it
- * creates a second enrollment with no progress. So nobody with an existing
- * enrollment is ever POSTed. Expired enrollments, and students with more
- * than one enrollment in the course, are skipped, as are deactivated
- * accounts and students who are not members of the domain, since what
- * Skilljar does with each has not been established. Remove sends students
- * with exactly one active enrollment.
+ * Add sends students with no enrollment (a POST). A student whose
+ * enrollment is deactivated is skipped unless `deactivated` says what to
+ * do: `reenroll` POSTs them, which in Skilljar creates a new enrollment with
+ * its own, empty progress and keeps the old one as history (every published
+ * course has `unique_progress_per_enrollment`); `restore` PATCHes the old
+ * enrollment back to active with its progress, which needs it to be their
+ * only one. Expired enrollments are skipped, as are deactivated accounts and
+ * students who are not members of the domain, since what Skilljar does with
+ * each has not been established. Remove sends students with exactly one
+ * active enrollment.
  *
+ * @param {{ deactivated?: 'reenroll' | 'restore' | null }} [options]
  * @returns {{ send: object[], skipped: object[] }}  skipped rows carry `result`
  */
-export function planEnrollments(action, students, { reactivate = false } = {}) {
+export function planEnrollments(action, students, { deactivated = null } = {}) {
   const send = [];
   const skipped = [];
   const skipAs = (s, result) => skipped.push({ ...s, result });
@@ -162,10 +164,10 @@ export function planEnrollments(action, students, { reactivate = false } = {}) {
       if (s.inactive) skipAs(s, 'skipped_inactive_account');
       else if (state === 'active') skipAs(s, 'skipped_already_enrolled');
       else if (state === 'expired') skipAs(s, 'skipped_expired');
-      else if (state === 'deactivated' && !reactivate) skipAs(s, 'skipped_deactivated');
-      else if (state === 'deactivated' && (rows?.length ?? 1) > 1) skipAs(s, 'skipped_several_enrollments');
+      else if (state === 'deactivated' && !deactivated) skipAs(s, 'skipped_deactivated');
+      else if (state === 'deactivated' && deactivated === 'restore' && (rows?.length ?? 1) > 1) skipAs(s, 'skipped_several_enrollments');
       else if (s.domain !== 'member') skipAs(s, `skipped_domain_${s.domain}`);
-      else send.push({ ...s, intent: state === 'not_enrolled' ? 'enroll' : 'reactivate' });
+      else send.push({ ...s, intent: state === 'not_enrolled' ? 'enroll' : deactivated });
     } else if (state === 'active' && activeIds.length === 1) send.push({ ...s, intent: 'deactivate' });
     else if (state === 'active') skipAs(s, 'skipped_several_active_enrollments');
     else skipAs(s, state === 'not_enrolled' ? 'skipped_not_enrolled' : 'skipped_already_inactive');
@@ -188,10 +190,10 @@ export function deactivateBody(enrollmentIds) {
 }
 
 /**
- * The body of `PATCH /enrollments/` that reactivates each enrollment in
- * place, keeping its id, `enrolled_at` and progress.
+ * The body of `PATCH /enrollments/` that restores each enrollment in place,
+ * keeping its id, `enrolled_at` and progress.
  */
-export function reactivateBody(enrollmentIds) {
+export function restoreBody(enrollmentIds) {
   return { data: enrollmentIds.map((id) => ({ type: 'enrollments', id, attributes: { active: true } })) };
 }
 
@@ -206,7 +208,7 @@ function pointerIndex(item) {
  * says items come back in request order, so position is used when the
  * counts agree; otherwise a failed item's pointer, a succeeded add's
  * student id, or a PATCH item's enrollment id. `action` is `add` for a
- * POST, and `remove` or `reactivate` for a PATCH.
+ * POST, and `remove` or `restore` for a PATCH.
  */
 function matchItems(action, sent, body) {
   const items = Array.isArray(body?.data) ? body.data : [];
@@ -249,21 +251,28 @@ export function readBatchResult(action, sent, body) {
 
 /**
  * Whether what was read back is what the run meant to leave behind. A new
- * enrollment must be active, with the requested expiry if one was given; a
- * reactivation must leave the enrollment it targeted as the only active
- * one; a remove wants the enrollment it targeted to be inactive.
+ * enrollment must be active, with the requested expiry if one was given. A
+ * restore must leave the enrollment it targeted as the only active one. A
+ * re-enroll must leave one active enrollment that is not the old one, with
+ * the old one still inactive. A remove wants the enrollment it targeted to
+ * be inactive.
  *
  * @returns {string|null}  why it is not, or null when it is
  */
 export function readBackMismatch(action, student, after, { expiresAt } = {}) {
-  if (action === 'add' && student.intent === 'reactivate') {
-    const id = student.enrollment.enrollmentId;
-    const target = after.rows.find((r) => r.id === id);
-    if (!target) return 'the enrollment was not found on read-back';
-    if (target.attributes?.active !== true) return 'read back as still inactive';
-    const others = after.activeIds.filter((a) => a !== id);
+  const oldId = student.enrollment.enrollmentId;
+  const old = after.rows.find((r) => r.id === oldId);
+  if (action === 'add' && student.intent === 'restore') {
+    if (!old) return 'the enrollment was not found on read-back';
+    if (old.attributes?.active !== true) return 'read back as still inactive';
+    const others = after.activeIds.filter((a) => a !== oldId);
     if (others.length) return `another active enrollment appeared: ${others.join(', ')}`;
     return null;
+  }
+  if (action === 'add' && student.intent === 'reenroll') {
+    if (after.activeIds.length !== 1) return `read back with ${after.activeIds.length} active enrollments, expected 1`;
+    if (after.activeIds[0] === oldId) return 'the old enrollment was reactivated, not a new one created';
+    if (old && old.attributes?.active !== false) return 'the old enrollment is no longer inactive';
   }
   if (action === 'add') {
     if (after.state !== 'active') return `read back as ${after.state}, expected active`;
@@ -288,11 +297,11 @@ export function finalResult(action, intent, response, mismatch, readBackError) {
   if (mismatch) return 'failed';
   if (response === 'already_enrolled') return 'already_enrolled';
   if (response !== 'succeeded') return 'failed_but_landed';
-  if (action === 'add') return intent === 'reactivate' ? 'reactivated' : 'enrolled';
+  if (action === 'add') return { reenroll: 're-enrolled', restore: 'restored' }[intent] ?? 'enrolled';
   return 'deactivated';
 }
 
-export const SUCCESS_RESULTS = new Set(['enrolled', 'reactivated', 'deactivated', 'already_enrolled']);
+export const SUCCESS_RESULTS = new Set(['enrolled', 're-enrolled', 'restored', 'deactivated', 'already_enrolled']);
 
 export const AUDIT_FIELDS = [
   'email', 'student_id', 'name', 'course_id', 'course_title', 'published_course_id', 'domain', 'action',

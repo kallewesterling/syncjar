@@ -348,7 +348,9 @@ some emails are skipped:
 |---|---|---|
 | No Skilljar account, or more than one | ✓ | ✓ |
 | Already actively enrolled | ✓ | — |
-| Enrollment deactivated or expired | unless `--reactivate` | ✓ (already inactive) |
+| Enrollment deactivated | unless `--re-enroll` (a new enrollment, from no progress) or `--restore` (the old one, with its progress) | ✓ (already inactive) |
+| Enrollment expired | ✓ | ✓ (already inactive) |
+| More than one enrollment in the course on that domain, with `--restore` | ✓ | — |
 | Deactivated account | ✓ | — |
 | Not an active member of the domain | ✓ | — |
 | Not enrolled | — | ✓ |

@@ -40,8 +40,8 @@ import {
   planEnrollments,
   readBackMismatch,
   readBatchResult,
-  reactivateBody,
   resolveCourse,
+  restoreBody,
   writesUnlocked
 } from '#lib/enrollments/enroll-plan.mjs';
 
@@ -52,7 +52,7 @@ export function parseEnrollArgs(action, argv) {
   const add = action === 'add';
   const parser = yargs(argv)
     .scriptName(`syncjar enroll:${action}`)
-    .usage(`$0 --course <id|title> [--domain <name>] (--in <file> | --email <address>…)${add ? ' [--expires-at <date>] [--reactivate]' : ''} [--confirm]\n\n` +
+    .usage(`$0 --course <id|title> [--domain <name>] (--in <file> | --email <address>…)${add ? ' [--expires-at <date>] [--re-enroll | --restore]' : ''} [--confirm]\n\n` +
       `${add ? 'Enrolls existing Skilljar students in' : 'Deactivates students\' enrollments in'} a course, by email. ` +
       'Dry run unless --confirm is passed.')
     .option('course', { type: 'string', demandOption: true, describe: 'v2 id or exact title of the course' })
@@ -64,7 +64,9 @@ export function parseEnrollArgs(action, argv) {
   if (add) {
     parser
       .option('expires-at', { type: 'string', describe: 'When the new enrollments expire (ISO 8601; a bare date is midnight UTC)' })
-      .option('reactivate', { type: 'boolean', default: false, describe: 'Also reactivate deactivated enrollments, in place, keeping their progress' });
+      .option('re-enroll', { type: 'boolean', default: false, describe: 'Give students with a deactivated enrollment a new one, starting from no progress; the old one is kept as history' })
+      .option('restore', { type: 'boolean', default: false, describe: 'Make students\' deactivated enrollment active again, keeping its progress' })
+      .conflicts('re-enroll', 'restore');
   }
   return parser
     .check((a) => {
@@ -114,9 +116,9 @@ const list = (items) => `${items.slice(0, 5).join(', ')}${items.length > 5 ? ', 
 const SKIP_REASONS = {
   skipped_inactive_account: 'have a deactivated Skilljar account',
   skipped_already_enrolled: 'are already enrolled (active)',
-  skipped_deactivated: 'have a deactivated enrollment; pass --reactivate to reactivate it, keeping its progress',
-  skipped_expired: 'have an expired enrollment; reactivating one has not been tested, so do it in the dashboard',
-  skipped_several_enrollments: 'have more than one enrollment in this published course; choose which to reactivate in the dashboard',
+  skipped_deactivated: 'have a deactivated enrollment; pass --re-enroll for a new one from scratch, or --restore to bring it back with its progress',
+  skipped_expired: 'have an expired enrollment; what Skilljar does with one has not been tested, so use the dashboard',
+  skipped_several_enrollments: 'have more than one enrollment in this published course; choose which to restore in the dashboard, or pass --re-enroll',
   skipped_domain_not_member: 'are not members of the domain; what Skilljar does with them is not yet verified',
   skipped_domain_inactive_member: 'have an inactive membership of the domain; what Skilljar does with them is not yet verified',
   skipped_not_enrolled: 'are not enrolled in the course on this domain',
@@ -159,6 +161,14 @@ export async function runEnroll(action, argv, {
       return 1;
     }
     expiresAt = parsed.iso;
+  }
+  if (argv.reEnroll && argv.restore) {
+    log(fail('Pass --re-enroll or --restore, not both.'));
+    return 1;
+  }
+  if (argv.reEnroll && expiresAt) {
+    log(fail('--expires-at cannot be combined with --re-enroll: Skilljar answers that with an internal error.'));
+    return 1;
   }
 
   const { emails, invalid, repeated } = await readEmails(argv, readFile);
@@ -230,7 +240,8 @@ export async function runEnroll(action, argv, {
   } catch (err) {
     return apiError(err, 'Could not read the students\' enrollments');
   }
-  const { send, skipped } = planEnrollments(action, students, { reactivate: Boolean(argv.reactivate) });
+  const deactivated = argv.reEnroll ? 'reenroll' : argv.restore ? 'restore' : null;
+  const { send, skipped } = planEnrollments(action, students, { deactivated });
 
   log(heading(`\n${verb.toUpperCase()}  ${send.length} students ${action === 'add' ? 'in' : 'from'} "${course.attributes?.title}" on ${domain.name}`));
   log(muted(`  course id ${course.id}, published course id ${publishedCourse.id}`));
@@ -242,19 +253,21 @@ export async function runEnroll(action, argv, {
     const these = skipped.filter((s) => s.result === result);
     if (these.length) log(warn(`${these.length} students ${reason}: ${list(these.map((s) => s.email))}`));
   }
-  const reactivating = send.filter((s) => s.intent === 'reactivate');
-  if (reactivating.length) {
-    log(muted(`  ${reactivating.length} deactivated enrollment(s) will be reactivated in place, keeping their progress`));
-    if (expiresAt) log(warn('--expires-at applies to new enrollments only, not to reactivated ones.'));
+  const restoring = send.filter((s) => s.intent === 'restore');
+  const reenrolling = send.filter((s) => s.intent === 'reenroll').length;
+  if (reenrolling) log(muted(`  ${reenrolling} with a deactivated enrollment get a new one, from no progress; the old one stays as history`));
+  if (restoring.length) {
+    log(muted(`  ${restoring.length} deactivated enrollment(s) are restored in place, keeping their progress`));
+    if (expiresAt) log(warn('--expires-at applies to new enrollments only, not to restored ones.'));
   }
   if (action === 'remove') {
     log(muted('  Deactivating keeps the enrollment and its progress, and ends the learner\'s access; it is not a deletion.'));
-    log(muted('  enroll:add --reactivate undoes it.'));
+    log(muted('  enroll:add --restore undoes it; --re-enroll gives them a fresh start instead.'));
   }
   const jobs = action === 'add'
     ? [
-        ...chunk(send.filter((s) => s.intent === 'enroll'), ENROLL_BATCH_SIZE).map((batch) => ({ kind: 'add', batch })),
-        ...chunk(reactivating, ENROLL_BATCH_SIZE).map((batch) => ({ kind: 'reactivate', batch }))
+        ...chunk(send.filter((s) => s.intent !== 'restore'), ENROLL_BATCH_SIZE).map((batch) => ({ kind: 'add', batch })),
+        ...chunk(restoring, ENROLL_BATCH_SIZE).map((batch) => ({ kind: 'restore', batch }))
       ]
     : chunk(send, ENROLL_BATCH_SIZE).map((batch) => ({ kind: 'remove', batch }));
   log(muted(`  ${jobs.length} write request(s) of up to ${ENROLL_BATCH_SIZE}\n`));
@@ -291,7 +304,7 @@ export async function runEnroll(action, argv, {
       const ids = batch.map((s) => s.enrollment.enrollmentId);
       const res = kind === 'add'
         ? await client.post('/enrollments/', enrollBody(publishedCourse.id, batch.map((s) => s.email), expiresAt))
-        : await client.patch('/enrollments/', kind === 'reactivate' ? reactivateBody(ids) : deactivateBody(ids));
+        : await client.patch('/enrollments/', kind === 'restore' ? restoreBody(ids) : deactivateBody(ids));
       for (const row of readBatchResult(kind, batch, res.data)) responses.set(row.email, row);
     } catch (err) {
       stopped = describe(err);
@@ -356,7 +369,7 @@ export async function runEnroll(action, argv, {
   const failed = rows.filter((r) => !SUCCESS_RESULTS.has(r.result));
   log('');
   if (action === 'add') {
-    log(ok(`${count('enrolled')} enrolled`) + muted(`, ${count('reactivated')} reactivated, ${count('already_enrolled')} already enrolled, all read back`));
+    log(ok(`${count('enrolled')} enrolled`) + muted(`, ${count('re-enrolled')} re-enrolled, ${count('restored')} restored, ${count('already_enrolled')} already enrolled, all read back`));
   } else {
     log(ok(`${count('deactivated')} deactivated, read back`));
   }

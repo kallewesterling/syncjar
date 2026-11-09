@@ -83,7 +83,7 @@ const student = (email, state, extra = {}) => ({
   ...extra
 });
 
-test('an add sends only students with no enrollment, unless --reactivate', () => {
+test('an add sends only students with no enrollment, unless told what to do with deactivated ones', () => {
   const students = [
     student('new@x.com', 'not_enrolled'),
     student('on@x.com', 'active'),
@@ -97,25 +97,38 @@ test('an add sends only students with no enrollment, unless --reactivate', () =>
   assert.deepEqual(plain.skipped.map((s) => s.result), [
     'skipped_already_enrolled', 'skipped_deactivated', 'skipped_expired', 'skipped_inactive_account', 'skipped_domain_not_member'
   ]);
-  const re = planEnrollments('add', students, { reactivate: true });
-  assert.deepEqual(re.send.map((s) => [s.email, s.intent]), [['new@x.com', 'enroll'], ['off@x.com', 'reactivate']]);
-  assert.equal(re.skipped.find((s) => s.email === 'old@x.com').result, 'skipped_expired');
+  for (const mode of ['reenroll', 'restore']) {
+    const re = planEnrollments('add', students, { deactivated: mode });
+    assert.deepEqual(re.send.map((s) => [s.email, s.intent]), [['new@x.com', 'enroll'], ['off@x.com', mode]]);
+    assert.equal(re.skipped.find((s) => s.email === 'old@x.com').result, 'skipped_expired');
+  }
 });
 
-test('--reactivate skips a student with more than one enrollment row, rather than guess which', () => {
+test('--restore skips a student with more than one enrollment row, rather than guess which; --re-enroll does not need to', () => {
   const two = student('two@x.com', 'deactivated');
   two.enrollment.rows = [{ id: 'e1' }, { id: 'e2' }];
-  const { send, skipped } = planEnrollments('add', [two], { reactivate: true });
-  assert.deepEqual(send, []);
-  assert.equal(skipped[0].result, 'skipped_several_enrollments');
+  const restore = planEnrollments('add', [two], { deactivated: 'restore' });
+  assert.deepEqual([restore.send, restore.skipped[0].result], [[], 'skipped_several_enrollments']);
+  assert.equal(planEnrollments('add', [two], { deactivated: 'reenroll' }).send[0].intent, 'reenroll');
 });
 
-test('a reactivation counts only if the same enrollment is active again, and alone', () => {
-  const s = { ...student('a@x.com', 'deactivated'), intent: 'reactivate' };
-  const rowsWith = (...rows) => ({ state: 'active', activeIds: rows.filter((r) => r.attributes.active).map((r) => r.id), rows, expiresAt: '' });
-  assert.equal(readBackMismatch('add', s, rowsWith({ id: 'e', attributes: { active: true } })), null);
-  assert.match(readBackMismatch('add', s, rowsWith({ id: 'e', attributes: { active: false } }, { id: 'new', attributes: { active: true } })), /still inactive/);
-  assert.match(readBackMismatch('add', s, rowsWith({ id: 'e', attributes: { active: true } }, { id: 'new', attributes: { active: true } })), /another active enrollment appeared: new/);
+const rowsWith = (...rows) => ({ state: rows.some((r) => r.attributes.active) ? 'active' : 'deactivated', activeIds: rows.filter((r) => r.attributes.active).map((r) => r.id), rows, expiresAt: '' });
+const on = (id) => ({ id, attributes: { active: true } });
+const off = (id) => ({ id, attributes: { active: false } });
+
+test('a restore counts only if the same enrollment is active again, and alone', () => {
+  const s = { ...student('a@x.com', 'deactivated'), intent: 'restore' };
+  assert.equal(readBackMismatch('add', s, rowsWith(on('e'))), null);
+  assert.match(readBackMismatch('add', s, rowsWith(off('e'), on('new'))), /still inactive/);
+  assert.match(readBackMismatch('add', s, rowsWith(on('e'), on('new'))), /another active enrollment appeared: new/);
+});
+
+test('a re-enroll counts only if one new enrollment is active and the old one stays inactive', () => {
+  const s = { ...student('a@x.com', 'deactivated'), intent: 'reenroll' };
+  assert.equal(readBackMismatch('add', s, rowsWith(off('e'), on('new'))), null);
+  assert.match(readBackMismatch('add', s, rowsWith(on('e'))), /old enrollment was reactivated/);
+  assert.match(readBackMismatch('add', s, rowsWith(on('e'), on('new'))), /2 active enrollments/);
+  assert.match(readBackMismatch('add', s, rowsWith(off('e'))), /0 active enrollments/);
 });
 
 test('a remove sends only students with exactly one active enrollment', () => {
@@ -160,7 +173,8 @@ test('only a read-back that matches the intent counts as done', () => {
   assert.match(readBackMismatch('remove', s, after('active', { rows: [{ id: 'e', attributes: { active: true } }] })), /still active/);
 
   assert.equal(finalResult('add', 'enroll', 'succeeded', null), 'enrolled');
-  assert.equal(finalResult('add', 'reactivate', 'succeeded', null), 'reactivated');
+  assert.equal(finalResult('add', 'restore', 'succeeded', null), 'restored');
+  assert.equal(finalResult('add', 'reenroll', 'succeeded', null), 're-enrolled');
   assert.equal(finalResult('add', 'enroll', 'succeeded', 'read back as not_enrolled'), 'failed');
   assert.equal(finalResult('add', 'enroll', 'failed', null), 'failed_but_landed');
   assert.equal(finalResult('remove', 'deactivate', 'succeeded', null, 'HTTP 500'), 'unverified');
@@ -345,9 +359,9 @@ test('a confirmed remove deactivates the active enrollment by id and reads it ba
   assert.match(csv, /"p2@example.com",.*"skipped_not_enrolled"/);
 });
 
-test('--reactivate PATCHes the existing enrollment back to active, never POSTs, and keeps its progress', async () => {
+test('--restore PATCHes the existing enrollment back to active, never POSTs it, and keeps its progress', async () => {
   const enrollments = [row('e1', { studentId: 's0', active: false, progress: 'completed' })];
-  const h = harness({ argv: { email: ['p0@example.com', 'p1@example.com'], confirm: true, reactivate: true }, students: studentsFor(2), enrollments, answer: 'enroll 2' });
+  const h = harness({ argv: { email: ['p0@example.com', 'p1@example.com'], confirm: true, restore: true }, students: studentsFor(2), enrollments, answer: 'enroll 2' });
   assert.equal(await h.run('add'), 0);
   assert.deepEqual(writes(h.client).map(([m, , body]) => [m, body.data.map((d) => d.id ?? d.attributes.email)]), [
     ['POST', ['p1@example.com']],
@@ -356,8 +370,25 @@ test('--reactivate PATCHes the existing enrollment back to active, never POSTs, 
   assert.deepEqual(writes(h.client)[1][2].data[0].attributes, { active: true });
   assert.equal(h.client.store.find((e) => e.id === 'e1').attributes.progress_status, 'completed');
   const csv = Object.values(h.written)[0];
-  assert.match(csv, /"p0@example.com",.*"add","e1","deactivated","completed","","active","","succeeded","reactivated",""/);
-  assert.match(h.out(), /1 enrolled.*1 reactivated/);
+  assert.match(csv, /"p0@example.com",.*"add","e1","deactivated","completed","","active","","succeeded","restored",""/);
+  assert.match(h.out(), /1 enrolled.*1 restored/);
+});
+
+test('--re-enroll POSTs a deactivated student, and the new enrollment is what is audited', async () => {
+  const enrollments = [row('old', { studentId: 's0', active: false, progress: 'completed' })];
+  const h = harness({ argv: { email: ['p0@example.com'], confirm: true, reEnroll: true }, students: studentsFor(1), enrollments, answer: 'enroll 1' });
+  assert.equal(await h.run('add'), 0);
+  assert.deepEqual(writes(h.client).map(([m]) => m), ['POST']);
+  assert.equal(h.client.store.find((e) => e.id === 'old').attributes.active, false);
+  assert.match(Object.values(h.written)[0], /"add","e1","deactivated","completed","","active","","succeeded","re-enrolled",""/);
+  assert.match(h.out(), /1 re-enrolled/);
+});
+
+test('--re-enroll with --expires-at is refused before any request', async () => {
+  const h = harness({ argv: { email: ['p0@example.com'], confirm: true, reEnroll: true, expiresAt: '2027-01-31' }, students: studentsFor(1) });
+  assert.equal(await h.run('add'), 1);
+  assert.deepEqual(h.client.calls, []);
+  assert.match(h.out(), /cannot be combined with --re-enroll/);
 });
 
 test('an enrollment read that ignores its filters is refused rather than walked', async () => {
