@@ -8,14 +8,19 @@ import { fileURLToPath } from 'url';
 
 import {
   CHECKOUT_ONLY,
+  INSTALL_RECORD,
   commandTable,
+  commitUrl,
   configDir,
   envFiles,
   githubRepo,
   installSpec,
   layeredEnv,
+  parseCommit,
   providesCommand,
-  rawPackageUrl
+  rawPackageUrl,
+  readInstallRecord,
+  updateDecision
 } from '#lib/cli.mjs';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -90,6 +95,38 @@ test('update only installs a ref whose package.json still provides the command',
   assert.equal(providesCommand({ name: 'syncjar', scripts: {} }), false);
   assert.equal(providesCommand(undefined), false);
   assert.equal(rawPackageUrl('o/r', 'feature/x'), 'https://raw.githubusercontent.com/o/r/feature/x/package.json');
+});
+
+const SHA_A = 'bfd45f3a0ce460b289313c0b8d520747b47c9e3d';
+const SHA_B = '4866d00aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+
+test('update resolves a ref to a full commit and nothing else', () => {
+  assert.equal(commitUrl('o/r', 'feature/x'), 'https://api.github.com/repos/o/r/commits/feature%2Fx');
+  assert.equal(parseCommit(`${SHA_A}\n`), SHA_A);
+  assert.equal(parseCommit('bfd45f3'), null);
+  assert.equal(parseCommit('{"message":"Not Found"}'), null);
+  assert.equal(parseCommit(undefined), null);
+});
+
+test('update skips only when the recorded commit is the one it would install', () => {
+  const record = { ref: 'main', commit: SHA_A };
+  assert.deepEqual(updateDecision({ record, commit: SHA_A }), { install: false, reason: 'already installed' });
+  assert.equal(updateDecision({ record, commit: SHA_A, force: true }).install, true);
+  assert.deepEqual(updateDecision({ record, commit: SHA_B }), { install: true, reason: 'installed commit is bfd45f3' });
+  assert.equal(updateDecision({ record: { ...record, ref: 'dev' }, commit: SHA_A }).install, false);
+  assert.equal(updateDecision({ record: null, commit: SHA_A }).install, true);
+});
+
+test('an install record that is missing or malformed reads as none', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'syncjar-record-'));
+  assert.equal(readInstallRecord(dir), null);
+  fs.writeFileSync(path.join(dir, INSTALL_RECORD), 'not json');
+  assert.equal(readInstallRecord(dir), null);
+  fs.writeFileSync(path.join(dir, INSTALL_RECORD), JSON.stringify({ commit: 'bfd45f3' }));
+  assert.equal(readInstallRecord(dir), null);
+  fs.writeFileSync(path.join(dir, INSTALL_RECORD), JSON.stringify({ ref: 'main', commit: SHA_A }));
+  assert.deepEqual(readInstallRecord(dir), { ref: 'main', commit: SHA_A });
+  fs.rmSync(dir, { recursive: true });
 });
 
 function syncjar(args, cwd = os.tmpdir()) {

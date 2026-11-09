@@ -1,7 +1,7 @@
 import fs from 'fs-extra';
 import path from 'path';
 import { workRoot } from '#lib/paths.mjs';
-import { parse } from 'json2csv';
+import { toCsv } from '#lib/csv.mjs';
 import { format } from 'date-fns';
 
 const inputPath = path.join(workRoot, 'public', 'data', 'user-progress.json');
@@ -73,7 +73,7 @@ for (const course of allCourses) {
   fields.push(`${course} - registrations`, `${course} - completions`);
 }
 
-const csv = parse(rows, { fields });
+const csv = toCsv(rows, { fields });
 await fs.writeFile(outputPath, csv);
 
 console.log(`✓ Metrics CSV exported to ${outputPath}`);

@@ -124,6 +124,61 @@ export function rawPackageUrl(repo, ref) {
 }
 
 /**
+ * The GitHub API URL that resolves `ref` of a public repository to the commit
+ * it points at, answered as the bare SHA when asked with `COMMIT_ACCEPT`.
+ */
+export function commitUrl(repo, ref) {
+  return `https://api.github.com/repos/${repo}/commits/${encodeURIComponent(ref)}`;
+}
+
+export const COMMIT_ACCEPT = 'application/vnd.github.sha';
+
+/**
+ * The full commit SHA in a `commitUrl` response body, or null if the body is
+ * anything else.
+ */
+export function parseCommit(body) {
+  const sha = String(body ?? '').trim();
+  return /^[0-9a-f]{40}$/.test(sha) ? sha : null;
+}
+
+/**
+ * The file `syncjar update` writes into the install it just made, naming the
+ * commit installed. npm keeps no record of it, and the version cannot stand
+ * in: package.json records the last release, so every commit on a branch
+ * carries the same one. The install directory is replaced on each update,
+ * which removes the old record with the old code.
+ */
+export const INSTALL_RECORD = '.syncjar-install.json';
+
+/**
+ * The install record under `root`, or null when there is none or it is not
+ * readable as one. An install made with `npm install -g` directly has none.
+ */
+export function readInstallRecord(root, readFile = fs.readFileSync) {
+  try {
+    const record = JSON.parse(readFile(path.join(root, INSTALL_RECORD), 'utf8'));
+    return parseCommit(record?.commit) ? record : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether `syncjar update` should install `commit`. Only a recorded commit
+ * equal to it skips; without a record there is no telling what is
+ * installed, so it installs.
+ *
+ * @returns {{ install: boolean, reason: string }}
+ */
+export function updateDecision({ record, commit, force = false }) {
+  if (force) return { install: true, reason: 'forced' };
+  if (!record) return { install: true, reason: 'no record of the installed commit' };
+  if (record.commit === commit) return { install: false, reason: 'already installed' };
+  return { install: true, reason: `installed commit is ${record.commit.slice(0, 7)}` };
+}
+
+/**
  * The spec `npm install --global` takes to install `ref` of `repo` straight
  * from GitHub. `ref` is a branch, tag or commit.
  */

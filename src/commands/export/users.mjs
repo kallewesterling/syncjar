@@ -1,7 +1,7 @@
 import fs from 'fs-extra';
 import path from 'path';
 import { workRoot } from '#lib/paths.mjs';
-import { parse } from 'json2csv';
+import { toCsv } from '#lib/csv.mjs';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 
@@ -47,7 +47,7 @@ const rows = users.map((user, i) => {
   };
 });
 
-const csv = parse(rows);
+const csv = toCsv(rows);
 await fs.writeFile(outputPath, csv);
 
 console.log(`✓ CSV exported to ${outputPath}`);
