@@ -14,6 +14,8 @@ and version scheme in `CLAUDE.md`.
 
 ## [Unreleased]
 
+## [2.1.1] - 2026-11-09
+
 ### Changed
 
 - `syncjar update` does nothing when the ref already points at the installed
