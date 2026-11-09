@@ -14,6 +14,24 @@ and version scheme in `CLAUDE.md`.
 
 ## [Unreleased]
 
+### Changed
+
+- `syncjar update` does nothing when the ref already points at the installed
+  commit, and `--force` reinstalls anyway. It resolves the ref to a commit,
+  installs that exact commit, and records it in `.syncjar-install.json` inside
+  the install. The version could not decide this, because a branch keeps the
+  last release's version across commits.
+- Dependencies that `npm install` warned were deprecated are gone:
+  - `json2csv` (an alpha, pulling in `lodash.get`) is replaced by its
+    successor `@json2csv/plainjs`, behind `#lib/csv.mjs`. Output is
+    byte-identical.
+  - `node-fetch` (pulling in `node-domexception`) is replaced by Node's own
+    `fetch`.
+  - `glob` goes from 11 to 14.
+  - `jsdom` goes from 26 to 29, dropping `whatwg-encoding`.
+- Node 20.19 or later is now required (`jsdom` 29 needs it); 20.0 to 20.18
+  are no longer supported.
+
 ## [2.1.0] - 2026-11-09
 
 ### Added

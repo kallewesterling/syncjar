@@ -113,12 +113,19 @@ Every npm script below is then a subcommand, taking the same options:
 ```bash
 syncjar help                              # list commands
 syncjar export:students --out roster.csv  # = npm run export:students -- --out roster.csv
-syncjar update                            # reinstall the latest main from GitHub
+syncjar update                            # install the latest main from GitHub
 syncjar update --ref dev                  # or any branch, tag or commit
+syncjar update --force                    # reinstall even if it's already installed
 ```
 
-`syncjar update` first reads `package.json` at the ref it is about to
-install. It refuses a ref that doesn't provide the `syncjar` command, because
+`syncjar update` looks up the commit the ref points at and does nothing if
+that commit is already installed. It goes by commit rather than version,
+because every commit on a branch carries the version of the last release.
+The first update after a plain `npm install --global` always installs, since
+npm keeps no record of which commit it installed; `update` keeps one from
+then on.
+
+It also reads `package.json` at that commit before installing, and refuses a ref that doesn't provide the `syncjar` command, because
 installing one would remove the command and leave nothing to update from.
 From a clone, including one linked with `npm link`, it refuses outright and
 asks you to `git pull` instead.

@@ -3,7 +3,9 @@
  * syncjar — the global command.
  *
  *   syncjar <command> [options]   run an npm script, e.g. `syncjar push:quizzes --dry-run`
- *   syncjar update [--ref <ref>]  reinstall from GitHub (default ref: main)
+ *   syncjar update [--ref <ref>] [--force]
+ *                                 install from GitHub (default ref: main), unless
+ *                                 that commit is the one installed
  *   syncjar help                  list commands
  *
  * Each command runs as its own process, from the current directory, exactly
@@ -16,14 +18,20 @@ import path from 'path';
 import { repoRoot, isCheckout } from '#lib/paths.mjs';
 import {
   CHECKOUT_ONLY,
+  COMMIT_ACCEPT,
+  INSTALL_RECORD,
   commandTable,
+  commitUrl,
   configDir,
   envFiles,
   githubRepo,
   installSpec,
   layeredEnv,
+  parseCommit,
   providesCommand,
-  rawPackageUrl
+  rawPackageUrl,
+  readInstallRecord,
+  updateDecision
 } from '#lib/cli.mjs';
 import { fail, heading, muted, ok } from '#lib/ui.mjs';
 
@@ -33,13 +41,19 @@ const readPackage = () => JSON.parse(fs.readFileSync(path.join(repoRoot, 'packag
 const pkg = readPackage();
 const commands = commandTable(pkg.scripts);
 
+function installedFrom() {
+  const record = readInstallRecord(repoRoot);
+  return record ? `(${record.ref} @ ${record.commit.slice(0, 7)})` : '';
+}
+
 function usage() {
   const userEnv = path.join(configDir(), '.env');
-  console.log(`${heading('syncjar')} ${pkg.version} ${muted(isCheckout ? `(clone at ${repoRoot})` : '')}
+  console.log(`${heading('syncjar')} ${pkg.version} ${muted(isCheckout ? `(clone at ${repoRoot})` : installedFrom())}
 
 ${heading('Usage')}
   syncjar <command> [options]
-  syncjar update [--ref <branch|tag|commit>]   reinstall from GitHub (default: ${DEFAULT_REF})
+  syncjar update [--ref <branch|tag|commit>]   install from GitHub (default: ${DEFAULT_REF}),
+                 [--force]                    unless that commit is already installed
   syncjar <command> --help                     options for one command
 
 ${heading('Commands')}`);
@@ -91,17 +105,38 @@ async function update(args) {
     return 1;
   }
 
-  let spec;
   try {
-    spec = installSpec(repo, ref ?? '');
+    installSpec(repo, ref ?? '');
   } catch (err) {
     console.error(fail(err.message));
     return 1;
   }
 
+  let commit;
+  try {
+    const res = await fetch(commitUrl(repo, ref), { headers: { Accept: COMMIT_ACCEPT } });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    commit = parseCommit(await res.text());
+    if (!commit) throw new Error('no commit in the response');
+  } catch (err) {
+    console.error(fail(`Could not resolve ${repo}#${ref} to a commit (${err.message}).`));
+    console.error(muted('  Check the ref exists on GitHub. Nothing was changed.'));
+    return 1;
+  }
+  const short = commit.slice(0, 7);
+
+  const record = readInstallRecord(repoRoot);
+  const decision = updateDecision({ record, commit, force: args.includes('--force') });
+  if (!decision.install) {
+    console.log(ok(`syncjar ${pkg.version} from ${ref} (${short}) is already installed.`));
+    console.log(muted('  Nothing to do. Run with --force to reinstall it anyway.'));
+    return 0;
+  }
+
+  const spec = installSpec(repo, commit);
   let target;
   try {
-    const res = await fetch(rawPackageUrl(repo, ref));
+    const res = await fetch(rawPackageUrl(repo, commit));
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     target = await res.json();
   } catch (err) {
@@ -115,13 +150,22 @@ async function update(args) {
     return 1;
   }
 
-  console.log(`Installing ${spec} ${muted(`(currently ${pkg.version})`)}\n`);
+  console.log(`Installing ${repo}#${ref} (${short}) ${muted(`(currently ${pkg.version}, ${decision.reason})`)}\n`);
   const code = await run('npm', ['install', '--global', spec], { shell: process.platform === 'win32' });
   if (code !== 0) {
     console.error(fail(`npm install exited with ${code}. The previous install is unchanged.`));
     return code;
   }
-  console.log(`\n${ok(`syncjar ${readPackage().version} installed from ${ref}`)}`);
+  const version = readPackage().version;
+  try {
+    fs.writeFileSync(
+      path.join(repoRoot, INSTALL_RECORD),
+      `${JSON.stringify({ repo, ref, commit, version, installedAt: new Date().toISOString() }, null, 2)}\n`
+    );
+  } catch (err) {
+    console.error(muted(`  Could not record the installed commit (${err.message}); the next update will reinstall.`));
+  }
+  console.log(`\n${ok(`syncjar ${version} installed from ${ref} (${short})`)}`);
   console.log(muted('  package.json records the last release, so a branch install can show the same version.'));
   return 0;
 }

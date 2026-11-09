@@ -23,7 +23,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
-import { parse } from 'json2csv';
+import { toCsv } from '#lib/csv.mjs';
 import { workRoot } from '#lib/paths.mjs';
 import { failCleanly } from '#lib/skilljar/client.mjs';
 import { createSkilljarV2Client, V2_CREDENTIALS_HINT } from '#lib/skilljar/client-v2.mjs';
@@ -114,7 +114,7 @@ if (argv.json) {
 if (argv.out !== undefined) {
   const out = argv.out || DEFAULT_OUT;
   await fs.ensureDir(path.dirname(out));
-  await fs.writeFile(out, parse(visibilityRows(catalog, audiences), { fields: CSV_FIELDS }));
+  await fs.writeFile(out, toCsv(visibilityRows(catalog, audiences), { fields: CSV_FIELDS }));
   console.error(ok(`Visibility rows written to ${out}`));
 }
 

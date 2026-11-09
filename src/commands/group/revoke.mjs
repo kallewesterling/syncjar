@@ -41,7 +41,7 @@ import path from 'path';
 import { workRoot } from '#lib/paths.mjs';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
-import { parse } from 'json2csv';
+import { toCsv } from '#lib/csv.mjs';
 import chalk from 'chalk';
 import readline from 'node:readline/promises';
 import { createSkilljarClient } from '#lib/skilljar/client.mjs';
@@ -257,7 +257,7 @@ process.stdout.write('\n');
 const stamp = new Date().toISOString().replace(/[:.]/g, '-');
 const auditPath = path.join(argv.auditDir, `revoke-audit-${stamp}.csv`);
 await fs.ensureDir(argv.auditDir);
-await fs.writeFile(auditPath, parse(audit, {
+await fs.writeFile(auditPath, toCsv(audit, {
   fields: ['email', 'skilljar_id', 'action', 'target', 'before', 'after', 'result', 'error']
 }));
 

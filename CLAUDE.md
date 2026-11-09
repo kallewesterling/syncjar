@@ -339,13 +339,22 @@ run them outside a clone (`CHECKOUT_ONLY` in `#lib/cli.mjs`).
 CLI change. Each command runs as a child process with the user's options
 passed through.
 
-`syncjar update` installs `github:<repo>#<ref>` with `npm install --global`
-(default ref `main`). It first fetches `package.json` at that ref and refuses
-if it has no `bin.syncjar`. That was observed in a throwaway prefix:
-installing `dev` from before the CLI existed removed the `syncjar` command
-entirely, which leaves no `syncjar update` to recover with. So the default
-`main` only becomes usable once a release containing the CLI is tagged; until
-then, install and update with `--ref` pointing at a branch that has it.
+`syncjar update` resolves `<ref>` (default `main`) to a commit through the
+GitHub API, then installs `github:<repo>#<commit>` with `npm install --global`.
+It first fetches `package.json` at that commit and refuses if it has no
+`bin.syncjar`. That was observed in a throwaway prefix: installing `dev` from
+before the CLI existed removed the `syncjar` command entirely, which leaves no
+`syncjar update` to recover with. Since 2.1.0, `main` has the CLI.
+
+**It skips on the commit, not the version.** npm records neither the ref nor
+the commit of a GitHub install, and `package.json` lags `dev` on purpose, so
+every commit on a branch carries the same version and a version check would
+never update one. After installing, `update` writes `.syncjar-install.json`
+(`INSTALL_RECORD`) into the install, naming the commit, and the next run does
+nothing if the ref still resolves to it (`--force` reinstalls anyway). An
+install made with `npm install -g` directly has no record, so its first
+`update` always installs. npm replaces the install directory, so the record
+always describes the code beside it.
 
 Where a command must be importable — `sync/users.mjs` is, for its merge
 logic, and `pull/paths.mjs` for its matching and comparison helpers — guard
