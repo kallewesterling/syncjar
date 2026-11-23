@@ -77,7 +77,7 @@ Skilljar's API reference covers both, including how to get credentials:
 |---|---|
 | `whoami` | none beyond a valid client |
 | `group:add`, `group:remove` | `student-groups:read`, `student-groups:write`, `students:read` |
-| `group:domains` | `student-groups:read`, `student-groups:write` |
+| `group:domains` | `student-groups:read`, `student-groups:write`, plus `students:read` with `--check-existing` |
 | `enroll:add`, `enroll:remove` | `courses:read`, `published-courses:read`, `domains:read`, `students:read`, `enrollments:read`, `enrollments:write` |
 | `export:analytics` | `courses:read`, `analytics:read`, plus `domains:read` with `--domain` or `--by-domain` |
 | `export:enrollments` | `enrollments:read`, `published-courses:read`, `courses:read`, `students:read`, `analytics:read`, plus `domains:read` with `--domain` |
@@ -114,8 +114,80 @@ whether `SKILLJAR_API_KEY` is set.
 It makes no request beyond the token exchange, and never prints the token or
 the secret.
 
+## Keeping credentials in a password manager
+
+A `.env` file holds the secret in plain text, where any program running as
+you can read it, and it's a common way for credentials to leak. Syncjar
+doesn't need the file: a variable set in the environment wins over every
+`.env`, so a password manager can supply the credentials to one command at a
+time, and nothing is written to disk.
+
+### 1Password
+
+You need the [1Password CLI](https://developer.1password.com/docs/cli/get-started/)
+(`op`), signed in, ideally through the desktop app's integration.
+
+1. Save the credentials as an item, for example an **API Credential** named
+   `Syncjar`, with the client id as its `username` and the secret as its
+   `credential`.
+2. Write a file of *references* to that item. It holds no secrets, so it
+   can't leak one:
+
+   ```env
+   # ~/.config/syncjar/op.env
+   SKILLJAR_CLIENT_ID=op://Private/Syncjar/username
+   SKILLJAR_CLIENT_SECRET=op://Private/Syncjar/credential
+   ```
+
+   Use your vault's name in place of `Private`.
+3. Run commands through `op run`, which resolves the references, sets the
+   variables for that one command, and masks the secret in its output:
+
+   ```bash
+   op run --env-file ~/.config/syncjar/op.env -- syncjar whoami
+   ```
+
+To avoid typing that every time, add a function to your `~/.zshrc` or
+`~/.bashrc`:
+
+```bash
+syncjar() { op run --env-file "$HOME/.config/syncjar/op.env" -- command syncjar "$@"; }
+```
+
+### Bitwarden
+
+You need the [Bitwarden CLI](https://bitwarden.com/help/cli/) (`bw`), logged
+in with `bw login`.
+
+1. Save the credentials as a login item named `Syncjar`, with the client id
+   as its username and the secret as its password.
+2. Add a function to your `~/.zshrc` or `~/.bashrc`. It unlocks the vault
+   when needed and sets the variables for that one command:
+
+   ```bash
+   syncjar() {
+     if [ -z "$BW_SESSION" ]; then
+       BW_SESSION="$(bw unlock --raw)" || return
+       export BW_SESSION
+     fi
+     SKILLJAR_CLIENT_ID="$(bw get username Syncjar)" \
+     SKILLJAR_CLIENT_SECRET="$(bw get password Syncjar)" \
+       command syncjar "$@"
+   }
+   ```
+
+   The vault stays unlocked in that terminal until you run `bw lock` or close
+   it. If more than one item is named `Syncjar`, `bw get` refuses; use the
+   item's id instead.
+
+Organisations on Bitwarden Secrets Manager can use `bws run -- syncjar …`
+instead, with secrets named `SKILLJAR_CLIENT_ID` and `SKILLJAR_CLIENT_SECRET`.
+
+Either way, `syncjar whoami` shows whether the credentials arrived.
+
 ## Keeping credentials safe
 
+- Prefer a password manager (above) to a `.env` file.
 - Keep `.env` files out of git. A clone's `.gitignore` already covers `.env`.
 - Make the user-level file readable only by you:
   `chmod 600 ~/.config/syncjar/.env`.

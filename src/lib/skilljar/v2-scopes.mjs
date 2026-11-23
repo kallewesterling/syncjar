@@ -23,7 +23,10 @@ import { repoRoot } from '#lib/paths.mjs';
 export const V2_COMMAND_SCOPES = {
   'group:add': { scopes: ['student-groups:read', 'student-groups:write', 'students:read'] },
   'group:remove': { scopes: ['student-groups:read', 'student-groups:write', 'students:read'] },
-  'group:domains': { scopes: ['student-groups:read', 'student-groups:write'] },
+  'group:domains': {
+    scopes: ['student-groups:read', 'student-groups:write'],
+    optional: [{ flags: ['--check-existing'], scopes: ['students:read'] }]
+  },
   'export:analytics': {
     scopes: ['courses:read', 'analytics:read'],
     optional: [{ flags: ['--domain', '--by-domain'], scopes: ['domains:read'] }]

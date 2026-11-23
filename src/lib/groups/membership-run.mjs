@@ -26,6 +26,7 @@ import {
   classifyLookups,
   membershipBody,
   normaliseEmails,
+  outsideDomains,
   parseEmailList,
   readBatchResult
 } from '#lib/groups/membership.mjs';
@@ -35,7 +36,7 @@ const SAMPLE_ROWS = 10;
 
 export function parseMembershipArgs(action, argv) {
   const { verb } = ACTIONS[action];
-  return yargs(argv)
+  const parser = yargs(argv)
     .scriptName(`syncjar group:${verb}`)
     .usage(`$0 (--group <id> | --group-name <name>) (--in <file> | --email <address>…) [--confirm]\n\n` +
       `${verb === 'add' ? 'Adds existing Skilljar students to' : 'Removes students from'} a group, by email. ` +
@@ -45,7 +46,15 @@ export function parseMembershipArgs(action, argv) {
     .option('in', { type: 'string', describe: 'CSV with an email column, or one address per line' })
     .option('email', { type: 'array', string: true, default: [], describe: 'An address to act on; repeatable' })
     .option('confirm', { type: 'boolean', default: false, describe: 'Actually write. Without this it is a dry run.' })
-    .option('audit-dir', { type: 'string', default: path.join(workRoot, 'public', 'data'), describe: 'Where the audit CSV is written' })
+    .option('audit-dir', { type: 'string', default: path.join(workRoot, 'public', 'data'), describe: 'Where the audit CSV is written' });
+  if (action === 'add') {
+    parser.option('allow-other-domains', {
+      type: 'boolean',
+      default: false,
+      describe: 'Add students whose address is not at one of the group\'s auto-add domains'
+    });
+  }
+  return parser
     .check((a) => {
       if (!a.group === !a.groupName) throw new Error('Pass exactly one of --group or --group-name.');
       if (!a.in && !a.email.length) throw new Error('Pass --in <file> or at least one --email.');
@@ -168,6 +177,22 @@ export async function runMembership(action, argv, {
   if (!found.length) {
     log(fail('None of the emails belong to a Skilljar student. Nothing to do.'));
     return 1;
+  }
+
+  const domains = group.attributes?.rule_email_domains ?? [];
+  const outside = action === 'add' ? outsideDomains(found, domains) : [];
+  if (outside.length) {
+    log(warn(`${outside.length} of the students are not at one of the group's auto-add domains (${domains.join(', ')}):`));
+    for (const s of outside.slice(0, SAMPLE_ROWS)) log(`  ${s.email}${s.name ? muted(`  ${s.name}`) : ''}`);
+    if (outside.length > SAMPLE_ROWS) log(muted(`  … and ${outside.length - SAMPLE_ROWS} more`));
+    if (!argv.allowOtherDomains) {
+      if (argv.confirm) {
+        log(fail('Nothing was written. Take them off the list, or pass --allow-other-domains if they belong in the group.'));
+        return 1;
+      }
+      log(muted('  --confirm will refuse to add them unless --allow-other-domains is passed.'));
+    }
+    log('');
   }
 
   if (!argv.confirm) {

@@ -95,8 +95,11 @@ You only need the ones for the commands you use;
 [Credentials]({{ site.baseurl }}{% link configuration.md %}#credentials) lists
 which commands need which.
 
-For the global command, the natural place is a user-level file that only you
-can read:
+The safest place for them is a password manager, which supplies them to each
+command and leaves nothing on disk; see
+[Keeping credentials in a password manager]({{ site.baseurl }}{% link configuration.md %}#keeping-credentials-in-a-password-manager).
+Otherwise, for the global command, use a user-level file that only you can
+read:
 
 ```bash
 mkdir -p ~/.config/syncjar
