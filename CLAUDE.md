@@ -26,6 +26,14 @@ squashed.** Squashing it produces a new commit with no link to `main`'s
 history, so `main` stops being an ancestor of `dev` and the next release
 cannot fast-forward — which is how the divergence starts over.
 
+The same goes for a release PR from `dev` into `main`. Release 2.2.0 (#55)
+was squashed, and #56 had to repair it. Since then two rulesets limit the
+merge button: `main` takes merge commits only, and `dev` takes merge commits
+or squash, never rebase. A ruleset can't tell a back-merge from a feature
+PR, so on `dev` it is still up to whoever merges to pick "Create a merge
+commit" for a back-merge. The rulesets sit alongside the classic branch
+protection above; neither has bypass actors.
+
 **A branch names a role, never a version.** The integration branch was called
 `v2.0` until 2026-09-23, which collided with the release it was named after:
 the branch is permanent and the version is not, so "is this 2.1?" had no
