@@ -143,6 +143,10 @@ both. Put the user-level file somewhere only you can read:
 mkdir -p ~/.config/syncjar && touch ~/.config/syncjar/.env && chmod 600 ~/.config/syncjar/.env
 ```
 
+Better still, keep credentials out of files altogether and have a password
+manager inject them when a command runs. The documentation site's
+Configuration page shows how with 1Password and Bitwarden.
+
 Outside a clone, default outputs such as `public/data/` and `local-skilljar/`
 are written under the current directory, never into the install, which the
 next `syncjar update` replaces. The preview commands (`serve`,
@@ -183,7 +187,7 @@ next `syncjar update` replaces. The preview commands (`serve`,
 | `npm run group:revoke -- --in <csv> --group <id>` | Revoke access for a reviewed list of users |
 | `npm run group:add -- --group-name <name> --in <csv>` | Add existing students to a group, by email (API v2; dry run unless `--confirm`) |
 | `npm run group:remove -- --group-name <name> --in <csv>` | Remove students from a group, by email (API v2; dry run unless `--confirm`) |
-| `npm run group:domains -- --group-name <name> [--add <domain>] [--remove <domain>]` | List or change a group's auto-add email domains (API v2; dry run unless `--confirm`) |
+| `npm run group:domains -- --group-name <name> [--add <domain>] [--remove <domain>] [--check-existing]` | List or change a group's auto-add email domains, and optionally offer to add existing students at them (API v2; dry run unless `--confirm`) |
 | `npm run whoami -- [--json]` | Show the API v2 client's scopes and which commands it can run (read-only) |
 
 | `npm run enroll:add -- --course <id\|title> [--domain <name>] --in <csv>` | Enroll existing students in a course, by email (API v2; dry run unless `--confirm`) |
@@ -226,6 +230,11 @@ directory, holding names and addresses, so delete it when you are done.
 The v2 API cannot list a group's members. So an add reports who was already
 a member only after it runs, and a remove reports everyone sent as removed,
 whether or not they were in the group.
+
+When the group has auto-add email domains, `group:add` lists every student
+whose address is not at one of them. A dry run only warns; a confirmed run
+refuses to write unless you pass `--allow-other-domains`. Domains match
+exactly, so `eu.example.com` is not `example.com`.
 
 ### Course analytics (API v2)
 
@@ -289,7 +298,18 @@ syncjar group:domains --group-name "Partners" --remove old.example --confirm
 ```
 
 The domain rules apply at signup only. Students who already have an account are
-not added, so pair a new domain with `group:add` for them.
+not added. `--check-existing` finds them: it reads every student, since the
+API cannot filter by domain, and lists the active ones at the `--add`
+domains, or at all of the group's domains without `--add`. With `--confirm`
+it asks about each one (`y`, `n`, `a` for all the rest, `q` to stop), then
+adds the chosen ones as `group:add` does, typed confirmation and audit CSV
+included. It also needs `students:read`. The API cannot list a group's
+members, so students already in the group are offered too; adding them
+changes nothing.
+
+```bash
+syncjar group:domains --group-name "Partners" --add acme.com --check-existing --confirm
+```
 
 The v2 API can only replace a group's whole domain list, not add one
 domain. So a confirmed run reads the list again just before writing and

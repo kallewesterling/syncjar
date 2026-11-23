@@ -41,6 +41,14 @@ broader than membership, though; see the
 - a remove reports everyone sent as removed, whether or not they were in the
   group.
 
+**Addresses outside the group's domains.** When the group has
+[auto-add email domains](#auto-add-email-domains-groupdomains), `group:add`
+lists every student whose address isn't at one of them, since that's often a
+typo or the wrong group. A dry run only warns. A confirmed run refuses to
+write anything until you take them off the list, or pass
+`--allow-other-domains` if they belong in the group anyway. Domains match
+exactly: `eu.example.com` is not `example.com`.
+
 ## Auto-add email domains: `group:domains`
 
 A group's email domains put every new student who signs up with an address at
@@ -55,9 +63,42 @@ syncjar group:domains --group-name Partners --remove old.example --confirm
 
 It needs `student-groups:read` and `student-groups:write`.
 
+A list of more than ten domains is shown as a count, so it doesn't bury the
+plan. Pass `--verbose` to list every domain, one per line. When a write
+fails, the whole previous list is always printed, so you can put it back.
+
 {: .note }
 The rules apply at signup only. Students who already have an account aren't
-added, so pair a new domain with `group:add` for them.
+added. Use `--check-existing` (below) or `group:add` for them.
+
+### Existing students: `--check-existing`
+
+```bash
+syncjar group:domains --group-name Partners --add acme.com --check-existing            # dry run
+syncjar group:domains --group-name Partners --add acme.com --check-existing --confirm  # do it
+syncjar group:domains --group-name Partners --check-existing --confirm                 # every domain on the list
+```
+
+This finds the active students who already have an address at the `--add`
+domains, or, without `--add`, at every domain on the group's list. A dry run
+lists them. With `--confirm`, after any domain change has been written, it
+asks about each student in turn:
+
+| Answer | Does |
+|---|---|
+| `y` | Adds this student |
+| `n`, or Enter | Skips this student |
+| `a` | Adds this student and every one after |
+| `q` | Stops asking, and keeps the ones chosen so far |
+
+The chosen students then go through `group:add`, so you type `add <n>` once
+more and get its audit CSV.
+
+It needs `students:read` as well. The v2 API can't filter students by
+domain, so this reads every student in the organisation, which takes a few
+seconds to a minute depending on its size. The API can't list a group's
+members either, so students already in the group are offered too. Adding
+one of them changes nothing, and is reported as "already member".
 
 The v2 API can only replace a group's whole domain list, not add or remove
 one domain. So a confirmed run:

@@ -6,7 +6,9 @@ import {
   alreadyMemberCutoff,
   chunk,
   classifyLookups,
+  emailDomain,
   membershipBody,
+  outsideDomains,
   parseEmailList,
   readBatchResult
 } from '#lib/groups/membership.mjs';
@@ -217,6 +219,66 @@ test('a group name must match exactly one group', async () => {
   h.client.get = fakeClient({ students: studentsFor(1), groups }).get;
   assert.equal(await h.run('add'), 1);
   assert.match(h.lines.join('\n'), /No group is named "Partner"\. Names containing it: "Partner: Example", "Partner: Example EMEA"/);
+});
+
+test('an address is outside the domains unless its domain matches one exactly', () => {
+  assert.equal(emailDomain('Jane@Example.COM'), 'example.com');
+  const students = [{ email: 'a@example.com' }, { email: 'b@mail.example.com' }, { email: 'c@other.example' }];
+  assert.deepEqual(outsideDomains(students, ['Example.com']).map((s) => s.email), ['b@mail.example.com', 'c@other.example']);
+  assert.deepEqual(outsideDomains(students, []), []);
+});
+
+const domainGroup = [{ id: 'g1', attributes: { name: 'Partner: Example', rule_email_domains: ['example.com'] } }];
+const mixedStudents = {
+  'in@example.com': { id: 's1', attributes: { first_name: 'In', last_name: 'Side', is_inactive: false } },
+  'out@elsewhere.example': { id: 's2', attributes: { first_name: 'Out', last_name: 'Side', is_inactive: false } }
+};
+const domainHarness = (argv, answer) => {
+  const h = harness({ argv: { group: 'g1', email: Object.keys(mixedStudents), ...argv }, students: mixedStudents, answer });
+  h.client.get = fakeClient({ students: mixedStudents, groups: domainGroup }).get;
+  return h;
+};
+
+test('an add warns in a dry run about students outside the group\'s domains', async () => {
+  const h = domainHarness({});
+  assert.equal(await h.run('add'), 0);
+  const out = h.lines.join('\n');
+  assert.match(out, /1 of the students are not at one of the group's 1 auto-add domains \(example\.com\)/);
+  assert.match(out, /out@elsewhere\.example/);
+  assert.match(out, /--confirm will refuse/);
+});
+
+test('the warning counts the domains of a group with many, instead of listing them', async () => {
+  const many = [{ id: 'g1', attributes: { name: 'Partner: Example', rule_email_domains: Array.from({ length: 6 }, (_, i) => `d${i}.example`) } }];
+  const h = harness({ argv: { group: 'g1', email: Object.keys(mixedStudents) }, students: mixedStudents });
+  h.client.get = fakeClient({ students: mixedStudents, groups: many }).get;
+  assert.equal(await h.run('add'), 0);
+  const out = h.lines.join('\n');
+  assert.match(out, /2 of the students are not at one of the group's 6 auto-add domains:/);
+  assert.doesNotMatch(out, /d0\.example/);
+});
+
+test('a confirmed add refuses students outside the domains, before asking or writing', async () => {
+  const h = domainHarness({ confirm: true }, 'add 2');
+  assert.equal(await h.run('add'), 1);
+  assert.deepEqual(h.prompts, []);
+  assert.deepEqual(writes(h.client), []);
+  assert.deepEqual(h.written, {});
+  assert.match(h.lines.join('\n'), /pass --allow-other-domains/);
+});
+
+test('--allow-other-domains lets a confirmed add go ahead', async () => {
+  const h = domainHarness({ confirm: true, allowOtherDomains: true }, 'add 2');
+  assert.equal(await h.run('add'), 0);
+  assert.equal(writes(h.client).length, 1);
+});
+
+test('a group without auto-add domains, and a remove, are not checked', async () => {
+  const add = harness({ argv: { group: 'g1', email: ['p0@example.com'], confirm: true }, students: studentsFor(1), answer: 'add 1' });
+  assert.equal(await add.run('add'), 0);
+  const remove = domainHarness({ confirm: true }, 'remove 2');
+  assert.equal(await remove.run('remove'), 0);
+  assert.doesNotMatch(remove.lines.join('\n'), /auto-add domains/);
 });
 
 test('an unknown group id is reported through onApiError', async () => {

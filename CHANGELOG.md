@@ -22,6 +22,24 @@ and version scheme in `CLAUDE.md`.
   commands, a command reference, safety and data handling, and notes on how
   the Skilljar API behaves. Pull requests that touch `docs/` build the site,
   so a broken internal link fails the PR.
+- `group:domains --check-existing` finds students who already have an
+  account at a group's auto-add domains, which the rule never adds, asks
+  about each one, and adds the chosen ones through `group:add`. It needs
+  `students:read` as well, and reads every student, since v2 cannot filter
+  them by domain.
+- `group:add` lists students whose address is not at one of the group's
+  auto-add domains, and a confirmed run refuses them unless
+  `--allow-other-domains` is passed. Groups without domains are not checked.
+  With more than five domains, the warning gives their number, not the list.
+- `group:domains --verbose` lists every domain, one per line. Without it, a
+  list of more than ten is shown as a count. A failed write still prints
+  the whole previous list.
+- The Configuration page shows how to supply credentials from 1Password or
+  Bitwarden instead of a `.env` file.
+
+### Changed
+
+- The v2 credential errors no longer assume a `.env` file.
 
 ## [2.1.1] - 2026-11-09
 

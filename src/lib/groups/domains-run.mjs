@@ -7,22 +7,34 @@
  * and aborts if the list moved since the plan was shown, writes only
  * `rule_email_domains`, and reads the group back: a list that did not land,
  * or any other field that moved, is a failure.
+ *
+ * --check-existing then finds the students who already have an account at
+ * those domains, whom the rule will never add. v2 can neither filter
+ * students by domain nor list a group's members, so it reads every student
+ * and offers each match, member or not. A dry run lists them; with
+ * --confirm it asks about each one and passes the chosen ones to the
+ * `group:add` run, which looks them up again, asks once more and audits.
  */
+import path from 'path';
 import readline from 'node:readline/promises';
 import yargs from 'yargs';
+import { workRoot } from '#lib/paths.mjs';
 import { failCleanly } from '#lib/skilljar/client.mjs';
-import { createSkilljarV2Client, V2_CREDENTIALS_HINT } from '#lib/skilljar/client-v2.mjs';
-import { describe, resolveGroup } from '#lib/groups/membership-run.mjs';
+import { createSkilljarV2Client, listAllV2, V2_CREDENTIALS_HINT } from '#lib/skilljar/client-v2.mjs';
+import { describe, resolveGroup, runMembership } from '#lib/groups/membership-run.mjs';
+import { emailDomain } from '#lib/groups/membership.mjs';
 import { fail, heading, muted, ok, skip, warn } from '#lib/ui.mjs';
 import { PUBLIC_EMAIL_DOMAINS, domainsBody, normaliseDomains, planDomains, sameDomains } from '#lib/groups/domains.mjs';
 
 // Fields of a group that a domains write must leave alone.
 const UNTOUCHED = ['name', 'send_course_enrollment_email', 'category_id'];
 
+const SAMPLE_ROWS = 20;
+
 export function parseDomainsArgs(argv) {
   return yargs(argv)
     .scriptName('syncjar group:domains')
-    .usage('$0 (--group <id> | --group-name <name>) [--add <domain>…] [--remove <domain>…] [--confirm]\n\n' +
+    .usage('$0 (--group <id> | --group-name <name>) [--add <domain>…] [--remove <domain>…] [--check-existing] [--confirm]\n\n' +
       'Lists a group\'s auto-add email domains, or changes them. New students who sign up with an address at one ' +
       'of these domains are put in the group. Dry run unless --confirm is passed.')
     .option('group', { type: 'string', describe: 'v2 id of the group' })
@@ -30,6 +42,13 @@ export function parseDomainsArgs(argv) {
     .option('add', { type: 'array', string: true, default: [], describe: 'A domain to add, e.g. example.com; repeatable' })
     .option('remove', { type: 'array', string: true, default: [], describe: 'A domain to remove; repeatable' })
     .option('allow-public-domain', { type: 'boolean', default: false, describe: 'Allow adding a free-mail domain such as gmail.com' })
+    .option('check-existing', {
+      type: 'boolean',
+      default: false,
+      describe: 'Offer to add students who already have an account at the --add domains (or, without --add, at all of the group\'s domains)'
+    })
+    .option('audit-dir', { type: 'string', default: path.join(workRoot, 'public', 'data'), describe: 'Where --check-existing writes its audit CSV' })
+    .option('verbose', { type: 'boolean', default: false, describe: `List every domain, one per line, even when there are more than ${SHORT_LIST}` })
     .option('confirm', { type: 'boolean', default: false, describe: 'Actually write. Without this it is a dry run.' })
     .check((a) => {
       if (!a.group === !a.groupName) throw new Error('Pass exactly one of --group or --group-name.');
@@ -51,79 +70,22 @@ async function askTyped(question) {
 
 const listing = (domains) => (domains.length ? domains.join(', ') : '(none)');
 
+// Longer lists are summarised unless --verbose, so a group with a hundred
+// domains doesn't bury the plan. Failure messages always print the whole
+// list, since it is what an undo needs.
+export const SHORT_LIST = 10;
+const isLong = (domains, verbose) => !verbose && domains.length > SHORT_LIST;
+
 async function readGroup(client, id) {
   const { data } = await client.get(`/groups/${encodeURIComponent(id)}`);
   return data.data;
 }
 
 /**
- * Runs one `group:domains`. Returns the exit code. `client` is a v2 client
- * (or a stand-in with get/patch); the rest is injectable for tests.
+ * Writes `plan` after a typed confirmation, a fresh read and a read-back.
+ * Returns the exit code.
  */
-export async function runDomains(argv, { client, log = console.log, prompt = askTyped, onApiError }) {
-  const apiError = onApiError ?? ((err, context) => {
-    log(fail(`${context}: ${describe(err)}`));
-    return 1;
-  });
-
-  const add = normaliseDomains(argv.add);
-  const remove = normaliseDomains(argv.remove);
-  const invalid = [...add.invalid, ...remove.invalid];
-  if (invalid.length) {
-    log(fail(`Not a domain: ${invalid.join(', ')}. Pass a bare domain such as example.com.`));
-    return 1;
-  }
-  const both = add.domains.filter((d) => remove.domains.includes(d));
-  if (both.length) {
-    log(fail(`Both added and removed: ${both.join(', ')}.`));
-    return 1;
-  }
-  const publicDomains = add.domains.filter((d) => PUBLIC_EMAIL_DOMAINS.has(d));
-  if (publicDomains.length && !argv.allowPublicDomain) {
-    log(fail(`${publicDomains.join(', ')} is a free-mail domain: anyone who signs up with an address there would join the group.`));
-    log(muted('  Pass --allow-public-domain if that really is intended.'));
-    return 1;
-  }
-
-  let group;
-  try {
-    const resolved = await resolveGroup(client, argv);
-    if (resolved.error) {
-      log(fail(resolved.error));
-      return 1;
-    }
-    group = resolved.group;
-  } catch (err) {
-    return apiError(err, `Could not read group ${argv.group ?? `"${argv.groupName}"`}`);
-  }
-
-  const current = group.attributes?.rule_email_domains ?? [];
-  log(heading(`\n"${group.attributes?.name}"`));
-  log(muted(`  group id ${group.id}`));
-  log(`  Auto-add domains: ${listing(current)}`);
-
-  if (!add.domains.length && !remove.domains.length) return 0;
-
-  const plan = planDomains(current, { add: add.domains, remove: remove.domains });
-  log('');
-  for (const d of plan.adding) log(ok(`add     ${d}`));
-  for (const d of plan.removing) log(warn(`remove  ${d}`));
-  for (const d of plan.alreadyPresent) log(skip(`${d} is already there`));
-  for (const d of plan.notPresent) log(skip(`${d} is not there, so there is nothing to remove`));
-
-  const changes = plan.adding.length + plan.removing.length;
-  if (!changes) {
-    log(`\n${skip('Nothing to change.')}\n`);
-    return 0;
-  }
-  log(muted(`\n  ${plan.before.length} domains before, ${plan.after.length} after`));
-  log(muted('  This applies to new signups only. Students who already have an account are not added; use group:add for them.\n'));
-
-  if (!argv.confirm) {
-    log(`${skip('DRY RUN: nothing was written. Re-run with --confirm to apply.')}\n`);
-    return 0;
-  }
-
+async function writeDomains({ client, group, current, plan, changes, log, prompt, apiError, verbose }) {
   const expected = `change ${changes}`;
   const answer = await prompt(`Type "${expected}" to proceed: `);
   if (String(answer).trim() !== expected) {
@@ -181,8 +143,176 @@ export async function runDomains(argv, { client, log = console.log, prompt = ask
   }
 
   log(ok(`Updated: ${plan.adding.length} added, ${plan.removing.length} removed, ${after.attributes.rule_email_domains.length} domains now.`));
-  log(muted(`  They were: ${listing(current)}\n`));
+  log(muted(isLong(current, verbose) ? `  There were ${current.length} before.\n` : `  They were: ${listing(current)}\n`));
   return 0;
+}
+
+/**
+ * Active students with an address at one of `domains`, sorted by email.
+ */
+export function studentsAtDomains(students, domains) {
+  const wanted = new Set(domains);
+  return students
+    .filter((s) => !s.attributes?.is_inactive && wanted.has(emailDomain(s.attributes?.email)))
+    .map((s) => ({
+      id: s.id,
+      email: String(s.attributes.email).toLowerCase(),
+      name: [s.attributes?.first_name, s.attributes?.last_name].filter(Boolean).join(' ')
+    }))
+    .sort((a, b) => a.email.localeCompare(b.email));
+}
+
+/**
+ * Asks about each student in turn. `y` picks one, `n` or Enter skips it,
+ * `a` picks it and every one after, `q` stops asking and keeps what was
+ * picked so far.
+ */
+async function chooseStudents(students, groupName, prompt) {
+  const chosen = [];
+  for (let i = 0; i < students.length; i += 1) {
+    const s = students[i];
+    const label = `${s.email}${s.name ? ` (${s.name})` : ''}`;
+    const answer = String(await prompt(`Add ${label} to "${groupName}"? [y/N/a/q] `)).trim().toLowerCase();
+    if (answer === 'q') break;
+    if (answer === 'a') { chosen.push(...students.slice(i)); break; }
+    if (answer === 'y' || answer === 'yes') chosen.push(s);
+  }
+  return chosen;
+}
+
+async function checkExisting({ argv, client, group, domains, log, prompt, apiError, membershipDeps }) {
+  if (!domains.length) {
+    log(skip('The group has no auto-add domains, so there are no existing students to check.'));
+    return 0;
+  }
+  log(heading(`\nExisting students at ${isLong(domains, argv.verbose) ? `the group's ${domains.length} domains` : domains.join(', ')}`));
+  log(muted('  The API cannot filter students by domain, so this reads every student.'));
+
+  let students;
+  try {
+    students = studentsAtDomains(await listAllV2(client, '/students/'), domains);
+  } catch (err) {
+    return apiError(err, 'Could not read the students');
+  }
+  if (!students.length) {
+    log(skip('No active student has an address at these domains.\n'));
+    return 0;
+  }
+  log(`  ${students.length} active students found.`);
+  log(muted('  The API cannot list a group\'s members, so some of them may be in the group already.'));
+  log(muted('  Adding one of those changes nothing, and is reported as "already member".\n'));
+
+  if (!argv.confirm) {
+    for (const s of students.slice(0, SAMPLE_ROWS)) log(`  ${s.email}${s.name ? muted(`  ${s.name}`) : ''}`);
+    if (students.length > SAMPLE_ROWS) log(muted(`  … and ${students.length - SAMPLE_ROWS} more`));
+    log(`\n${skip('DRY RUN: nobody was added. Re-run with --confirm to be asked about each one.')}\n`);
+    return 0;
+  }
+
+  const chosen = await chooseStudents(students, group.attributes?.name, prompt);
+  if (!chosen.length) {
+    log(skip('\nNobody chosen. Nothing was written.\n'));
+    return 0;
+  }
+  return runMembership('add', {
+    group: group.id,
+    email: chosen.map((s) => s.email),
+    confirm: true,
+    auditDir: argv.auditDir
+  }, { client, log, prompt, ...membershipDeps });
+}
+
+/**
+ * Runs one `group:domains`. Returns the exit code. `client` is a v2 client
+ * (or a stand-in with get/patch/post); the rest is injectable for tests.
+ * `membershipDeps` goes to the `group:add` run that --check-existing ends in.
+ */
+export async function runDomains(argv, { client, log = console.log, prompt = askTyped, onApiError, membershipDeps = {} }) {
+  const apiError = onApiError ?? ((err, context) => {
+    log(fail(`${context}: ${describe(err)}`));
+    return 1;
+  });
+
+  const add = normaliseDomains(argv.add);
+  const remove = normaliseDomains(argv.remove);
+  const invalid = [...add.invalid, ...remove.invalid];
+  if (invalid.length) {
+    log(fail(`Not a domain: ${invalid.join(', ')}. Pass a bare domain such as example.com.`));
+    return 1;
+  }
+  const both = add.domains.filter((d) => remove.domains.includes(d));
+  if (both.length) {
+    log(fail(`Both added and removed: ${both.join(', ')}.`));
+    return 1;
+  }
+  const publicDomains = add.domains.filter((d) => PUBLIC_EMAIL_DOMAINS.has(d));
+  if (publicDomains.length && !argv.allowPublicDomain) {
+    log(fail(`${publicDomains.join(', ')} is a free-mail domain: anyone who signs up with an address there would join the group.`));
+    log(muted('  Pass --allow-public-domain if that really is intended.'));
+    return 1;
+  }
+
+  let group;
+  try {
+    const resolved = await resolveGroup(client, argv);
+    if (resolved.error) {
+      log(fail(resolved.error));
+      return 1;
+    }
+    group = resolved.group;
+  } catch (err) {
+    return apiError(err, `Could not read group ${argv.group ?? `"${argv.groupName}"`}`);
+  }
+
+  const current = group.attributes?.rule_email_domains ?? [];
+  log(heading(`\n"${group.attributes?.name}"`));
+  log(muted(`  group id ${group.id}`));
+  if (isLong(current, argv.verbose)) {
+    log(`  Auto-add domains: ${current.length}`);
+    log(muted('  Pass --verbose to list them.'));
+  } else if (argv.verbose && current.length) {
+    log(`  Auto-add domains (${current.length}):`);
+    for (const d of current) log(`    ${d}`);
+  } else {
+    log(`  Auto-add domains: ${listing(current)}`);
+  }
+
+  const plan = planDomains(current, { add: add.domains, remove: remove.domains });
+  const check = () => checkExisting({
+    argv, client, group, log, prompt, apiError, membershipDeps,
+    domains: add.domains.length ? add.domains : plan.after
+  });
+
+  if (!add.domains.length && !remove.domains.length) {
+    if (argv.checkExisting) return check();
+    log('');
+    return 0;
+  }
+
+  log('');
+  for (const d of plan.adding) log(ok(`add     ${d}`));
+  for (const d of plan.removing) log(warn(`remove  ${d}`));
+  for (const d of plan.alreadyPresent) log(skip(`${d} is already there`));
+  for (const d of plan.notPresent) log(skip(`${d} is not there, so there is nothing to remove`));
+
+  const changes = plan.adding.length + plan.removing.length;
+  if (!changes) {
+    log(`\n${skip('Nothing to change.')}\n`);
+    return argv.checkExisting ? check() : 0;
+  }
+  log(muted(`\n  ${plan.before.length} domains before, ${plan.after.length} after`));
+  log(muted(argv.checkExisting
+    ? '  This applies to new signups only. --check-existing covers students who already have an account.\n'
+    : '  This applies to new signups only. Students who already have an account are not added; pass --check-existing to find them.\n'));
+
+  if (!argv.confirm) {
+    log(`${skip('DRY RUN: nothing was written. Re-run with --confirm to apply.')}\n`);
+    return argv.checkExisting ? check() : 0;
+  }
+
+  const written = await writeDomains({ client, group, current, plan, changes, log, prompt, apiError, verbose: argv.verbose });
+  if (written !== 0) return written;
+  return argv.checkExisting ? check() : 0;
 }
 
 /**

@@ -86,7 +86,7 @@ function v2Credentials(env) {
   const clientId = env.SKILLJAR_CLIENT_ID;
   const clientSecret = env.SKILLJAR_CLIENT_SECRET;
   if (!clientId || !clientSecret) {
-    throw new Error('SKILLJAR_CLIENT_ID and SKILLJAR_CLIENT_SECRET are not set. Add them to your .env file.');
+    throw new Error('SKILLJAR_CLIENT_ID and SKILLJAR_CLIENT_SECRET are not set. Set them in the environment, from a password manager for example, or in a .env file.');
   }
   return { clientId, clientSecret };
 }
@@ -163,6 +163,6 @@ export async function listAllV2(client, url, params = {}) {
  * The lines failCleanly prints on a 401 or 403 from v2.
  */
 export const V2_CREDENTIALS_HINT = [
-  'Check SKILLJAR_CLIENT_ID and SKILLJAR_CLIENT_SECRET in .env.',
+  'Check SKILLJAR_CLIENT_ID and SKILLJAR_CLIENT_SECRET.',
   'A 403 usually means the API client lacks a scope this command needs.'
 ];

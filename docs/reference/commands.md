@@ -64,7 +64,7 @@ All read-only.
 |---|---|---|---|
 | [`group:add`]({{ site.baseurl }}{% link students/groups.md %}) | Adds students to a group, by email | with `--confirm` | v2 |
 | [`group:remove`]({{ site.baseurl }}{% link students/groups.md %}) | Removes students from a group, by email | with `--confirm` | v2 |
-| [`group:domains`]({{ site.baseurl }}{% link students/groups.md %}#auto-add-email-domains-groupdomains) | Lists or changes a group's auto-add email domains | with `--confirm` | v2 |
+| [`group:domains`]({{ site.baseurl }}{% link students/groups.md %}#auto-add-email-domains-groupdomains) | Lists or changes a group's auto-add email domains; `--check-existing` offers to add students already at them | with `--confirm` | v2 |
 | [`group:audit`]({{ site.baseurl }}{% link students/groups.md %}#auditing-a-group-against-a-roster-groupaudit) | Group members who aren't on a roster | no | v1 |
 | [`group:revoke`]({{ site.baseurl }}{% link students/groups.md %}#revoking-access-grouprevoke) | Removes reviewed users from a group, or deactivates them on a domain | with `--confirm` | v1 |
 | [`enroll:add`]({{ site.baseurl }}{% link students/enrollments.md %}) | Enrolls students in a course, by email | with `--confirm` | v2 |
