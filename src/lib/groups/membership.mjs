@@ -109,6 +109,23 @@ export function normaliseEmails(values) {
   return { emails: [...seen], invalid, repeated };
 }
 
+/** The domain of an address, lowercased: `Jane@Example.com` → `example.com`. */
+export function emailDomain(email) {
+  const at = String(email ?? '').lastIndexOf('@');
+  return at === -1 ? '' : String(email).slice(at + 1).trim().toLowerCase();
+}
+
+/**
+ * The students whose address is not at one of `domains`, matched exactly:
+ * `mail.example.com` is not `example.com`. With no domains there is nothing
+ * to be outside of, so none are.
+ */
+export function outsideDomains(students, domains) {
+  const allowed = new Set((domains ?? []).map((d) => d.toLowerCase()));
+  if (!allowed.size) return [];
+  return students.filter((s) => !allowed.has(emailDomain(s.email)));
+}
+
 export function chunk(items, size) {
   const out = [];
   for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));

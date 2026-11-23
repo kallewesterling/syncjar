@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { normaliseDomains, planDomains, sameDomains, domainsBody } from '#lib/groups/domains.mjs';
-import { runDomains } from '#lib/groups/domains-run.mjs';
+import { SHORT_LIST, runDomains, studentsAtDomains } from '#lib/groups/domains-run.mjs';
 
 test('domains are lowercased, trimmed, stripped of a leading @, and validated', () => {
   assert.deepEqual(normaliseDomains([' @Example.COM ', 'example.com', 'sub.example.co.uk', 'not a domain', 'x@y.com', 'nodot', '']), {
@@ -32,7 +32,7 @@ test('the write sends only rule_email_domains', () => {
   assert.deepEqual(domainsBody('g1', ['a.com']), { data: [{ type: 'groups', id: 'g1', attributes: { rule_email_domains: ['a.com'] } }] });
 });
 
-function fakeGroup(attributes, { onPatch, beforeReread } = {}) {
+function fakeGroup(attributes, { onPatch, beforeReread, students = [] } = {}) {
   const group = { id: 'g1', type: 'groups', attributes: { name: 'Partner: Example', send_course_enrollment_email: true, category_id: null, ...attributes } };
   const calls = [];
   let reads = 0;
@@ -48,7 +48,22 @@ function fakeGroup(attributes, { onPatch, beforeReread } = {}) {
         if (reads === 2) beforeReread?.(group);
         return { data: { data: clone() } };
       }
+      if (url === '/students/') {
+        const email = params?.['filter[email]'];
+        return { data: { data: email ? students.filter((s) => s.attributes.email === email) : students, links: {} } };
+      }
       throw Object.assign(new Error('404'), { response: { status: 404, data: { errors: [{ detail: 'Not found.' }] } } });
+    },
+    async post(url, body) {
+      calls.push(['POST', url, body]);
+      return {
+        data: {
+          data: body.data.map(({ id }) => ({
+            status: 'succeeded',
+            result: { attributes: { student_id: id, is_manager: false, created_at: new Date(NOW).toISOString() } }
+          }))
+        }
+      };
     },
     async patch(url, body) {
       calls.push(['PATCH', url, body]);
@@ -59,12 +74,22 @@ function fakeGroup(attributes, { onPatch, beforeReread } = {}) {
   };
 }
 
+const NOW = Date.parse('2026-11-23T12:00:00Z');
+
+/** `answer` is the reply to every prompt, or a list of replies in order. */
 function harness(argv, client, answer) {
   const lines = [];
   const prompts = [];
-  const deps = { client, log: (l) => lines.push(l), prompt: async (q) => { prompts.push(q); return answer; } };
-  const args = { add: [], remove: [], confirm: false, allowPublicDomain: false, ...argv };
-  return { run: () => runDomains(args, deps), lines, prompts, out: () => lines.join('\n') };
+  const written = {};
+  const replies = Array.isArray(answer) ? [...answer] : null;
+  const deps = {
+    client,
+    log: (l) => lines.push(l),
+    prompt: async (q) => { prompts.push(q); return replies ? replies.shift() : answer; },
+    membershipDeps: { writeFile: async (p, text) => { written[p] = text; }, now: () => NOW }
+  };
+  const args = { add: [], remove: [], confirm: false, allowPublicDomain: false, checkExisting: false, auditDir: '/audit', ...argv };
+  return { run: () => runDomains(args, deps), lines, prompts, written, out: () => lines.join('\n') };
 }
 
 const patches = (client) => client.calls.filter(([m]) => m === 'PATCH');
@@ -75,6 +100,35 @@ test('with no --add or --remove it only lists the domains', async () => {
   assert.equal(await h.run(), 0);
   assert.deepEqual(patches(client), []);
   assert.match(h.out(), /Auto-add domains: example\.com/);
+});
+
+const manyDomains = Array.from({ length: SHORT_LIST + 1 }, (_, i) => `d${i}.example`);
+
+test('a long list is counted, and --verbose lists it one per line', async () => {
+  const client = fakeGroup({ rule_email_domains: manyDomains });
+  const short = harness({ group: 'g1' }, client);
+  assert.equal(await short.run(), 0);
+  assert.match(short.out(), new RegExp(`Auto-add domains: ${SHORT_LIST + 1}\\n.*--verbose`));
+  assert.doesNotMatch(short.out(), /d0\.example/);
+
+  const verbose = harness({ group: 'g1', verbose: true }, client);
+  assert.equal(await verbose.run(), 0);
+  assert.match(verbose.out(), /Auto-add domains \(11\):\n {4}d0\.example\n {4}d1\.example/);
+});
+
+test('after writing to a long list it gives the old count, and a failure still prints the whole list', async () => {
+  const ok = fakeGroup({ rule_email_domains: [...manyDomains] });
+  const written = harness({ group: 'g1', add: ['new.example'], confirm: true }, ok, 'change 1');
+  assert.equal(await written.run(), 0);
+  assert.match(written.out(), /There were 11 before\./);
+  assert.doesNotMatch(written.out(), /d0\.example/);
+
+  const failing = fakeGroup({ rule_email_domains: [...manyDomains] }, {
+    onPatch: () => ({ data: { data: [{ status: 'failed', id: 'g1', error: { code: 'invalid' } }] } })
+  });
+  const failed = harness({ group: 'g1', add: ['new.example'], confirm: true }, failing, 'change 1');
+  assert.equal(await failed.run(), 1);
+  assert.match(failed.out(), /The list was: d0\.example, d1\.example/);
 });
 
 test('a dry run shows before and after and writes nothing', async () => {
@@ -171,4 +225,81 @@ test('invalid domains, and a domain both added and removed, are refused before a
   assert.equal(await harness({ group: 'g1', add: ['someone@example.com'] }, client).run(), 1);
   assert.equal(await harness({ group: 'g1', add: ['a.example'], remove: ['A.example'] }, client).run(), 1);
   assert.deepEqual(client.calls, []);
+});
+
+const student = (id, email, extra = {}) => ({ id, type: 'students', attributes: { email, first_name: 'F', last_name: id, is_inactive: false, ...extra } });
+const roster = [
+  student('s1', 'b@new.example'),
+  student('s2', 'a@New.Example'),
+  student('s3', 'c@sub.new.example'),
+  student('s4', 'd@other.example'),
+  student('s5', 'e@new.example', { is_inactive: true })
+];
+const posts = (client) => client.calls.filter(([m]) => m === 'POST');
+
+test('existing students are matched on the exact domain, active only, sorted by email', () => {
+  assert.deepEqual(studentsAtDomains(roster, ['new.example']).map((s) => [s.id, s.email]), [['s2', 'a@new.example'], ['s1', 'b@new.example']]);
+});
+
+test('a dry run with --check-existing lists the students it would offer, and asks and writes nothing', async () => {
+  const client = fakeGroup({ rule_email_domains: [] }, { students: roster });
+  const h = harness({ group: 'g1', add: ['new.example'], checkExisting: true }, client);
+  assert.equal(await h.run(), 0);
+  assert.deepEqual(h.prompts, []);
+  assert.deepEqual(patches(client), []);
+  assert.deepEqual(posts(client), []);
+  assert.match(h.out(), /2 active students found/);
+  assert.match(h.out(), /a@new\.example[\s\S]*b@new\.example/);
+  assert.match(h.out(), /DRY RUN: nobody was added/);
+});
+
+test('a confirmed --check-existing writes the domain, then adds only the students said yes to', async () => {
+  const client = fakeGroup({ rule_email_domains: [] }, { students: roster });
+  const h = harness({ group: 'g1', add: ['new.example'], checkExisting: true, confirm: true }, client, ['change 1', 'n', 'y', 'add 1']);
+  assert.equal(await h.run(), 0);
+  assert.deepEqual(h.prompts, [
+    'Type "change 1" to proceed: ',
+    'Add a@new.example (F s2) to "Partner: Example"? [y/N/a/q] ',
+    'Add b@new.example (F s1) to "Partner: Example"? [y/N/a/q] ',
+    'Type "add 1" to proceed: '
+  ]);
+  assert.equal(patches(client).length, 1);
+  assert.deepEqual(posts(client).map(([, url, body]) => [url, body.data.map((d) => d.id)]), [['/groups/g1/relationships/students/', ['s1']]]);
+  assert.equal(Object.keys(h.written).length, 1);
+});
+
+test('"a" picks every remaining student, and "q" stops with what was picked', async () => {
+  const many = [student('s1', 'a@new.example'), student('s2', 'b@new.example'), student('s3', 'c@new.example')];
+  const all = fakeGroup({ rule_email_domains: ['new.example'] }, { students: many });
+  assert.equal(await harness({ group: 'g1', checkExisting: true, confirm: true }, all, ['n', 'a', 'add 2']).run(), 0);
+  assert.deepEqual(posts(all)[0][2].data.map((d) => d.id), ['s2', 's3']);
+
+  const quit = fakeGroup({ rule_email_domains: ['new.example'] }, { students: many });
+  const h = harness({ group: 'g1', checkExisting: true, confirm: true }, quit, ['q']);
+  assert.equal(await h.run(), 0);
+  assert.deepEqual(posts(quit), []);
+  assert.match(h.out(), /Nobody chosen/);
+});
+
+test('--check-existing runs on a domain that is already there, and without --add checks every domain', async () => {
+  const client = fakeGroup({ rule_email_domains: ['new.example', 'other.example'] }, { students: roster });
+  const already = harness({ group: 'g1', add: ['new.example'], checkExisting: true }, client);
+  assert.equal(await already.run(), 0);
+  assert.match(already.out(), /Nothing to change[\s\S]*2 active students found/);
+
+  const every = harness({ group: 'g1', checkExisting: true }, client);
+  assert.equal(await every.run(), 0);
+  assert.match(every.out(), /at new\.example, other\.example[\s\S]*3 active students found/);
+
+  const long = fakeGroup({ rule_email_domains: manyDomains }, { students: roster });
+  const counted = harness({ group: 'g1', checkExisting: true }, long);
+  assert.equal(await counted.run(), 0);
+  assert.match(counted.out(), /Existing students at the group's 11 domains/);
+});
+
+test('a failed domain write stops before --check-existing reads any student', async () => {
+  const client = fakeGroup({ rule_email_domains: [] }, { students: roster });
+  const h = harness({ group: 'g1', add: ['new.example'], checkExisting: true, confirm: true }, client, 'no');
+  assert.equal(await h.run(), 1);
+  assert.ok(!client.calls.some(([, url]) => url === '/students/'));
 });
