@@ -283,7 +283,11 @@ export async function runDomains(argv, { client, log = console.log, prompt = ask
     domains: add.domains.length ? add.domains : plan.after
   });
 
-  if (!add.domains.length && !remove.domains.length) return argv.checkExisting ? check() : 0;
+  if (!add.domains.length && !remove.domains.length) {
+    if (argv.checkExisting) return check();
+    log('');
+    return 0;
+  }
 
   log('');
   for (const d of plan.adding) log(ok(`add     ${d}`));
