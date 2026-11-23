@@ -14,6 +14,8 @@ and version scheme in `CLAUDE.md`.
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-11-23
+
 ### Added
 
 - A documentation site, built from `docs/` with Jekyll and the Just the Docs
