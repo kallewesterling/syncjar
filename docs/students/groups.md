@@ -63,6 +63,10 @@ syncjar group:domains --group-name Partners --remove old.example --confirm
 
 It needs `student-groups:read` and `student-groups:write`.
 
+A list of more than ten domains is shown as a count, so it doesn't bury the
+plan. Pass `--verbose` to list every domain, one per line. When a write
+fails, the whole previous list is always printed, so you can put it back.
+
 {: .note }
 The rules apply at signup only. Students who already have an account aren't
 added. Use `--check-existing` (below) or `group:add` for them.

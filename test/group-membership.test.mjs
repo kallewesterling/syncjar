@@ -243,9 +243,19 @@ test('an add warns in a dry run about students outside the group\'s domains', as
   const h = domainHarness({});
   assert.equal(await h.run('add'), 0);
   const out = h.lines.join('\n');
-  assert.match(out, /1 of the students are not at one of the group's auto-add domains \(example\.com\)/);
+  assert.match(out, /1 of the students are not at one of the group's 1 auto-add domains \(example\.com\)/);
   assert.match(out, /out@elsewhere\.example/);
   assert.match(out, /--confirm will refuse/);
+});
+
+test('the warning counts the domains of a group with many, instead of listing them', async () => {
+  const many = [{ id: 'g1', attributes: { name: 'Partner: Example', rule_email_domains: Array.from({ length: 6 }, (_, i) => `d${i}.example`) } }];
+  const h = harness({ argv: { group: 'g1', email: Object.keys(mixedStudents) }, students: mixedStudents });
+  h.client.get = fakeClient({ students: mixedStudents, groups: many }).get;
+  assert.equal(await h.run('add'), 0);
+  const out = h.lines.join('\n');
+  assert.match(out, /2 of the students are not at one of the group's 6 auto-add domains:/);
+  assert.doesNotMatch(out, /d0\.example/);
 });
 
 test('a confirmed add refuses students outside the domains, before asking or writing', async () => {

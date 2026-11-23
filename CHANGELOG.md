@@ -30,6 +30,10 @@ and version scheme in `CLAUDE.md`.
 - `group:add` lists students whose address is not at one of the group's
   auto-add domains, and a confirmed run refuses them unless
   `--allow-other-domains` is passed. Groups without domains are not checked.
+  With more than five domains, the warning gives their number, not the list.
+- `group:domains --verbose` lists every domain, one per line. Without it, a
+  list of more than ten is shown as a count. A failed write still prints
+  the whole previous list.
 - The Configuration page shows how to supply credentials from 1Password or
   Bitwarden instead of a `.env` file.
 

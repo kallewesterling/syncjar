@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { normaliseDomains, planDomains, sameDomains, domainsBody } from '#lib/groups/domains.mjs';
-import { runDomains, studentsAtDomains } from '#lib/groups/domains-run.mjs';
+import { SHORT_LIST, runDomains, studentsAtDomains } from '#lib/groups/domains-run.mjs';
 
 test('domains are lowercased, trimmed, stripped of a leading @, and validated', () => {
   assert.deepEqual(normaliseDomains([' @Example.COM ', 'example.com', 'sub.example.co.uk', 'not a domain', 'x@y.com', 'nodot', '']), {
@@ -100,6 +100,35 @@ test('with no --add or --remove it only lists the domains', async () => {
   assert.equal(await h.run(), 0);
   assert.deepEqual(patches(client), []);
   assert.match(h.out(), /Auto-add domains: example\.com/);
+});
+
+const manyDomains = Array.from({ length: SHORT_LIST + 1 }, (_, i) => `d${i}.example`);
+
+test('a long list is counted, and --verbose lists it one per line', async () => {
+  const client = fakeGroup({ rule_email_domains: manyDomains });
+  const short = harness({ group: 'g1' }, client);
+  assert.equal(await short.run(), 0);
+  assert.match(short.out(), new RegExp(`Auto-add domains: ${SHORT_LIST + 1}\\n.*--verbose`));
+  assert.doesNotMatch(short.out(), /d0\.example/);
+
+  const verbose = harness({ group: 'g1', verbose: true }, client);
+  assert.equal(await verbose.run(), 0);
+  assert.match(verbose.out(), /Auto-add domains \(11\):\n {4}d0\.example\n {4}d1\.example/);
+});
+
+test('after writing to a long list it gives the old count, and a failure still prints the whole list', async () => {
+  const ok = fakeGroup({ rule_email_domains: [...manyDomains] });
+  const written = harness({ group: 'g1', add: ['new.example'], confirm: true }, ok, 'change 1');
+  assert.equal(await written.run(), 0);
+  assert.match(written.out(), /There were 11 before\./);
+  assert.doesNotMatch(written.out(), /d0\.example/);
+
+  const failing = fakeGroup({ rule_email_domains: [...manyDomains] }, {
+    onPatch: () => ({ data: { data: [{ status: 'failed', id: 'g1', error: { code: 'invalid' } }] } })
+  });
+  const failed = harness({ group: 'g1', add: ['new.example'], confirm: true }, failing, 'change 1');
+  assert.equal(await failed.run(), 1);
+  assert.match(failed.out(), /The list was: d0\.example, d1\.example/);
 });
 
 test('a dry run shows before and after and writes nothing', async () => {
@@ -261,6 +290,11 @@ test('--check-existing runs on a domain that is already there, and without --add
   const every = harness({ group: 'g1', checkExisting: true }, client);
   assert.equal(await every.run(), 0);
   assert.match(every.out(), /at new\.example, other\.example[\s\S]*3 active students found/);
+
+  const long = fakeGroup({ rule_email_domains: manyDomains }, { students: roster });
+  const counted = harness({ group: 'g1', checkExisting: true }, long);
+  assert.equal(await counted.run(), 0);
+  assert.match(counted.out(), /Existing students at the group's 11 domains/);
 });
 
 test('a failed domain write stops before --check-existing reads any student', async () => {

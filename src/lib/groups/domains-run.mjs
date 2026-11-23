@@ -48,6 +48,7 @@ export function parseDomainsArgs(argv) {
       describe: 'Offer to add students who already have an account at the --add domains (or, without --add, at all of the group\'s domains)'
     })
     .option('audit-dir', { type: 'string', default: path.join(workRoot, 'public', 'data'), describe: 'Where --check-existing writes its audit CSV' })
+    .option('verbose', { type: 'boolean', default: false, describe: `List every domain, one per line, even when there are more than ${SHORT_LIST}` })
     .option('confirm', { type: 'boolean', default: false, describe: 'Actually write. Without this it is a dry run.' })
     .check((a) => {
       if (!a.group === !a.groupName) throw new Error('Pass exactly one of --group or --group-name.');
@@ -69,6 +70,12 @@ async function askTyped(question) {
 
 const listing = (domains) => (domains.length ? domains.join(', ') : '(none)');
 
+// Longer lists are summarised unless --verbose, so a group with a hundred
+// domains doesn't bury the plan. Failure messages always print the whole
+// list, since it is what an undo needs.
+export const SHORT_LIST = 10;
+const isLong = (domains, verbose) => !verbose && domains.length > SHORT_LIST;
+
 async function readGroup(client, id) {
   const { data } = await client.get(`/groups/${encodeURIComponent(id)}`);
   return data.data;
@@ -78,7 +85,7 @@ async function readGroup(client, id) {
  * Writes `plan` after a typed confirmation, a fresh read and a read-back.
  * Returns the exit code.
  */
-async function writeDomains({ client, group, current, plan, changes, log, prompt, apiError }) {
+async function writeDomains({ client, group, current, plan, changes, log, prompt, apiError, verbose }) {
   const expected = `change ${changes}`;
   const answer = await prompt(`Type "${expected}" to proceed: `);
   if (String(answer).trim() !== expected) {
@@ -136,7 +143,7 @@ async function writeDomains({ client, group, current, plan, changes, log, prompt
   }
 
   log(ok(`Updated: ${plan.adding.length} added, ${plan.removing.length} removed, ${after.attributes.rule_email_domains.length} domains now.`));
-  log(muted(`  They were: ${listing(current)}\n`));
+  log(muted(isLong(current, verbose) ? `  There were ${current.length} before.\n` : `  They were: ${listing(current)}\n`));
   return 0;
 }
 
@@ -178,7 +185,7 @@ async function checkExisting({ argv, client, group, domains, log, prompt, apiErr
     log(skip('The group has no auto-add domains, so there are no existing students to check.'));
     return 0;
   }
-  log(heading(`\nExisting students at ${domains.join(', ')}`));
+  log(heading(`\nExisting students at ${isLong(domains, argv.verbose) ? `the group's ${domains.length} domains` : domains.join(', ')}`));
   log(muted('  The API cannot filter students by domain, so this reads every student.'));
 
   let students;
@@ -260,7 +267,15 @@ export async function runDomains(argv, { client, log = console.log, prompt = ask
   const current = group.attributes?.rule_email_domains ?? [];
   log(heading(`\n"${group.attributes?.name}"`));
   log(muted(`  group id ${group.id}`));
-  log(`  Auto-add domains: ${listing(current)}`);
+  if (isLong(current, argv.verbose)) {
+    log(`  Auto-add domains: ${current.length}`);
+    log(muted('  Pass --verbose to list them.'));
+  } else if (argv.verbose && current.length) {
+    log(`  Auto-add domains (${current.length}):`);
+    for (const d of current) log(`    ${d}`);
+  } else {
+    log(`  Auto-add domains: ${listing(current)}`);
+  }
 
   const plan = planDomains(current, { add: add.domains, remove: remove.domains });
   const check = () => checkExisting({
@@ -291,7 +306,7 @@ export async function runDomains(argv, { client, log = console.log, prompt = ask
     return argv.checkExisting ? check() : 0;
   }
 
-  const written = await writeDomains({ client, group, current, plan, changes, log, prompt, apiError });
+  const written = await writeDomains({ client, group, current, plan, changes, log, prompt, apiError, verbose: argv.verbose });
   if (written !== 0) return written;
   return argv.checkExisting ? check() : 0;
 }

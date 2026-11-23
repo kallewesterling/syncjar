@@ -33,6 +33,8 @@ import {
 
 const LOOKUP_CONCURRENCY = 4;
 const SAMPLE_ROWS = 10;
+// A group with more domains than this gets a count in the warning, not the list.
+const DOMAINS_NAMED = 5;
 
 export function parseMembershipArgs(action, argv) {
   const { verb } = ACTIONS[action];
@@ -182,7 +184,8 @@ export async function runMembership(action, argv, {
   const domains = group.attributes?.rule_email_domains ?? [];
   const outside = action === 'add' ? outsideDomains(found, domains) : [];
   if (outside.length) {
-    log(warn(`${outside.length} of the students are not at one of the group's auto-add domains (${domains.join(', ')}):`));
+    const named = domains.length <= DOMAINS_NAMED ? ` (${domains.join(', ')})` : '';
+    log(warn(`${outside.length} of the students are not at one of the group's ${domains.length} auto-add domains${named}:`));
     for (const s of outside.slice(0, SAMPLE_ROWS)) log(`  ${s.email}${s.name ? muted(`  ${s.name}`) : ''}`);
     if (outside.length > SAMPLE_ROWS) log(muted(`  … and ${outside.length - SAMPLE_ROWS} more`));
     if (!argv.allowOtherDomains) {
