@@ -54,6 +54,20 @@ At that moment, and not before:
   and open a fresh empty `[Unreleased]` above it;
 - set `version` in `package.json` to match the tag.
 
+Both land in the commit the tag points at, because pushing the tag is what
+publishes the GitHub Release. `.github/workflows/release.yaml` creates it,
+titled `syncjar X.Y.Z`, with that version's `CHANGELOG.md` section, read at
+the tagged commit, as its notes. It fails rather than publish an empty
+Release if the section is missing. A tag alone does not appear under
+Releases: 2.1.0 to 2.3.0 were pushed before the workflow existed, and
+weren't Releases until they were backfilled on 2026-11-26. If the
+workflow fails, fix the changelog and rerun the job, or create the Release
+by hand:
+
+```bash
+gh release create vX.Y.Z --verify-tag --title "syncjar X.Y.Z" --notes-file <section>
+```
+
 `package.json` therefore lags `dev` on purpose: it records the last release,
 not the work in flight. Nothing had ever been tagged before 2.0.0 — including
 `1.0.0`, which exists only as a `CHANGELOG.md` heading — so treat the tag
