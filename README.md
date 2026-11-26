@@ -91,18 +91,12 @@ cd syncjar
 npm install
 ```
 
-2. Store your Skilljar API key in the macOS Keychain, where Syncjar finds it
-   by itself. The command prompts for the key, so it stays out of your shell
-   history:
+Add your Skilljar credentials. Keep them in the macOS Keychain or a password
+manager, not in a `.env` file;
+[Configuration](https://westerling.nu/syncjar/configuration.html#credentials)
+explains which credentials each command needs and how to store them.
 
-```bash
-security add-generic-password -U -s syncjar -a SKILLJAR_API_KEY -w
-```
-
-   Not on a Mac? Have a password manager supply it; see below. Avoid `.env`
-   files for credentials: they hold the key in plain text.
-
-3. Pull your Skilljar content and generate the local preview index:
+Then pull your Skilljar content and generate the local preview index:
 
 ```bash
 npm run build:preview
@@ -139,16 +133,9 @@ installing one would remove the command and leave nothing to update from.
 From a clone, including one linked with `npm link`, it refuses outright and
 asks you to `git pull` instead.
 
-Keep credentials out of files. Syncjar reads `SKILLJAR_API_KEY`,
-`SKILLJAR_CLIENT_ID` and `SKILLJAR_CLIENT_SECRET` from the macOS Keychain
-(service `syncjar`, account the variable's name), or a password manager can
-inject them when a command runs. The documentation site's Configuration page
-shows how with the Keychain, 1Password and Bitwarden.
-
-A variable set in the shell wins over everything, then a `.env` in the
-current directory, then `~/.config/syncjar/.env`
-(`$XDG_CONFIG_HOME/syncjar/.env`, or `%APPDATA%\syncjar\.env` on Windows),
-then the Keychain. Use `.env` files only for settings that aren't secret.
+The global command finds credentials the same way a clone does;
+[Configuration](https://westerling.nu/syncjar/configuration.html#where-settings-are-read-from)
+lists where settings are read from.
 
 Outside a clone, default outputs such as `public/data/` and `local-skilljar/`
 are written under the current directory, never into the install, which the
@@ -207,12 +194,9 @@ is the one to hand to someone who should not hold the v1 key. It is broader
 than membership, though: `student-groups:write` also renames groups, rewrites
 their auto-add domains, changes which courses they can see, and deletes them.
 Syncjar's commands do none of that except `group:domains`, but whoever holds
-the credentials can call the API directly.
-
-```env
-SKILLJAR_CLIENT_ID=...
-SKILLJAR_CLIENT_SECRET=...
-```
+the credentials can call the API directly. The client goes in
+`SKILLJAR_CLIENT_ID` and `SKILLJAR_CLIENT_SECRET`, stored as described in
+[Configuration](https://westerling.nu/syncjar/configuration.html#keeping-credentials-in-a-password-manager).
 
 ```bash
 # Dry run: reads only, and shows who would be added

@@ -21,6 +21,11 @@ and version scheme in `CLAUDE.md`.
   without one, so the repo's Releases panel still showed 2.0.0 as latest;
   they have been backfilled.
 
+### Changed
+
+- The README no longer repeats how to store credentials; it links to the
+  Configuration page, which is the one place that describes it.
+
 ## [2.3.0] - 2026-11-26
 
 ### Added
