@@ -14,6 +14,13 @@ and version scheme in `CLAUDE.md`.
 
 ## [Unreleased]
 
+### Added
+
+- Pushing a version tag publishes its GitHub Release, with that version's
+  changelog section as the notes. Tags 2.1.0 to 2.3.0 had been pushed
+  without one, so the repo's Releases panel still showed 2.0.0 as latest;
+  they have been backfilled.
+
 ### Changed
 
 - The README no longer repeats how to store credentials; it links to the
