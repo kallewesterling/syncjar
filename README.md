@@ -77,7 +77,7 @@ It's your local **Skilljar workspace**: Write content, test changes, see diffs, 
 │
 ├── test/                            # node --test; imports lib as #lib/*
 │
-├── .env                             # API key
+├── .env-example                     # settings that aren't secret
 └── README.md
 ```
 
@@ -91,11 +91,16 @@ cd syncjar
 npm install
 ```
 
-2. Add your Skilljar API key to a .env file:
+2. Store your Skilljar API key in the macOS Keychain, where Syncjar finds it
+   by itself. The command prompts for the key, so it stays out of your shell
+   history:
 
-```env
-SKILLJAR_API_KEY=sk-live-abc123
+```bash
+security add-generic-password -U -s syncjar -a SKILLJAR_API_KEY -w
 ```
+
+   Not on a Mac? Have a password manager supply it; see below. Avoid `.env`
+   files for credentials: they hold the key in plain text.
 
 3. Pull your Skilljar content and generate the local preview index:
 
@@ -134,18 +139,16 @@ installing one would remove the command and leave nothing to update from.
 From a clone, including one linked with `npm link`, it refuses outright and
 asks you to `git pull` instead.
 
-Credentials come from a `.env` in the current directory, then from
-`~/.config/syncjar/.env` (`$XDG_CONFIG_HOME/syncjar/.env`, or
-`%APPDATA%\syncjar\.env` on Windows). A variable set in the shell wins over
-both. Put the user-level file somewhere only you can read:
+Keep credentials out of files. Syncjar reads `SKILLJAR_API_KEY`,
+`SKILLJAR_CLIENT_ID` and `SKILLJAR_CLIENT_SECRET` from the macOS Keychain
+(service `syncjar`, account the variable's name), or a password manager can
+inject them when a command runs. The documentation site's Configuration page
+shows how with the Keychain, 1Password and Bitwarden.
 
-```bash
-mkdir -p ~/.config/syncjar && touch ~/.config/syncjar/.env && chmod 600 ~/.config/syncjar/.env
-```
-
-Better still, keep credentials out of files altogether and have a password
-manager inject them when a command runs. The documentation site's
-Configuration page shows how with 1Password and Bitwarden.
+A variable set in the shell wins over everything, then a `.env` in the
+current directory, then `~/.config/syncjar/.env`
+(`$XDG_CONFIG_HOME/syncjar/.env`, or `%APPDATA%\syncjar\.env` on Windows),
+then the Keychain. Use `.env` files only for settings that aren't secret.
 
 Outside a clone, default outputs such as `public/data/` and `local-skilljar/`
 are written under the current directory, never into the install, which the

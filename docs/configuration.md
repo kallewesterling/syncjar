@@ -13,18 +13,21 @@ nav_order: 3
 
 ## Where settings are read from
 
-Syncjar is configured with environment variables, usually kept in `.env`
-files. They are read in this order, and a later one wins over an earlier
-one:
+Syncjar is configured with environment variables. They are read in this
+order, and a later one wins over an earlier one:
 
-1. `~/.config/syncjar/.env`. That is `$XDG_CONFIG_HOME/syncjar/.env` when
+1. The macOS Keychain, for the three credentials only. See
+   [macOS Keychain](#macos-keychain).
+2. `~/.config/syncjar/.env`. That is `$XDG_CONFIG_HOME/syncjar/.env` when
    `XDG_CONFIG_HOME` is set, and `%APPDATA%\syncjar\.env` on Windows.
-2. The clone's own `.env`, when running from a clone.
-3. `.env` in the current directory.
-4. Variables already set in your shell, which win over every file.
+3. The clone's own `.env`, when running from a clone.
+4. `.env` in the current directory.
+5. Variables already set in your shell, which win over every file.
 
-So a user-level file can hold your credentials, and a project directory can
-point the content paths somewhere else.
+Keep credentials in the Keychain or a password manager, not in a `.env`
+file; see [Keeping credentials in a password manager](#keeping-credentials-in-a-password-manager).
+A `.env` file is fine for settings that aren't secret, such as pointing the
+content paths somewhere else from a project directory.
 
 ## Variables
 
@@ -117,10 +120,45 @@ the secret.
 ## Keeping credentials in a password manager
 
 A `.env` file holds the secret in plain text, where any program running as
-you can read it, and it's a common way for credentials to leak. Syncjar
-doesn't need the file: a variable set in the environment wins over every
-`.env`, so a password manager can supply the credentials to one command at a
-time, and nothing is written to disk.
+you can read it, and it's a common way for credentials to leak: into a
+commit, a backup, a shared screen, or an AI assistant that reads the project.
+Syncjar doesn't need the file. It reads the macOS Keychain itself, and a
+variable set in the environment wins over every `.env`, so a password manager
+can supply the credentials to one command at a time and nothing is written
+to disk.
+
+### macOS Keychain
+
+Nothing to install and no wrapper to write: Syncjar looks its credentials up
+in your login Keychain. Store each one as a generic password with the
+service `syncjar` and the variable's name as the account. Ending the command
+with `-w` makes `security` prompt for the value, so it never lands in your
+shell history:
+
+```bash
+security add-generic-password -U -s syncjar -a SKILLJAR_API_KEY -w
+security add-generic-password -U -s syncjar -a SKILLJAR_CLIENT_ID -w
+security add-generic-password -U -s syncjar -a SKILLJAR_CLIENT_SECRET -w
+```
+
+Store only the ones you use. `-U` replaces a value that's already there, so
+the same command rotates a credential. To remove one:
+
+```bash
+security delete-generic-password -s syncjar -a SKILLJAR_API_KEY
+```
+
+Syncjar asks the Keychain only when a command needs a credential and the
+variable isn't already set. So a value in your shell or in any `.env` file
+still wins: once a credential is in the Keychain, delete its line from every
+`.env`. `syncjar whoami` shows whether the credentials arrived.
+
+The Keychain encrypts the value and keeps it out of every project directory,
+which is what keeps it away from tools that read files. It is not a prompt
+on every use: any program running as you can ask `security` for it, as
+Syncjar does. For that, use 1Password, below.
+
+Set `SYNCJAR_NO_KEYCHAIN=1` to stop Syncjar reading the Keychain.
 
 ### 1Password
 
@@ -187,10 +225,11 @@ Either way, `syncjar whoami` shows whether the credentials arrived.
 
 ## Keeping credentials safe
 
-- Prefer a password manager (above) to a `.env` file.
-- Keep `.env` files out of git. A clone's `.gitignore` already covers `.env`.
-- Make the user-level file readable only by you:
-  `chmod 600 ~/.config/syncjar/.env`.
+- Keep credentials in the Keychain or a password manager (above), never in
+  a `.env` file.
+- If a `.env` file holds anything else, keep it out of git (a clone's
+  `.gitignore` already covers `.env`) and make the user-level one readable
+  only by you: `chmod 600 ~/.config/syncjar/.env`.
 - Prefer a narrowly scoped v2 client over the v1 key wherever a command
   allows it.
 - If a key or secret is ever pasted into a terminal log, a CI transcript or a
