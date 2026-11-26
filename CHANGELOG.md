@@ -14,6 +14,21 @@ and version scheme in `CLAUDE.md`.
 
 ## [Unreleased]
 
+### Added
+
+- Credentials can come from the macOS Keychain. `SKILLJAR_API_KEY`,
+  `SKILLJAR_CLIENT_ID` and `SKILLJAR_CLIENT_SECRET` are looked up as generic
+  passwords with the service `syncjar` and the variable's name as the
+  account, when a client is built and only for a variable that isn't set
+  already, so the shell and any `.env` still win. `SYNCJAR_NO_KEYCHAIN=1`
+  turns it off.
+
+### Changed
+
+- The docs, `syncjar help`, `.env-example` and the "not set" errors now
+  steer credentials to the Keychain or a password manager and away from
+  `.env` files, which are for settings that aren't secret.
+
 ## [2.2.0] - 2026-11-23
 
 ### Added

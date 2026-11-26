@@ -402,6 +402,14 @@ stripped and the cwd moved away from the repo, so a `.env` cannot mask it
 again. It walks the directory rather than keeping a list, so a new module is
 covered the day it is added.
 
+**The Keychain is the third thing that can mask it.** `withKeychain()`
+(`#lib/keychain.mjs`) fills unset credentials from the macOS Keychain, and
+runs only as the default `env` of the client factories, never on import. So
+that test sets `SYNCJAR_NO_KEYCHAIN`, and any test that expects "not set"
+must either do the same or pass `env` explicitly, as the v2 client tests do.
+Don't move the lookup to module scope: it would break the rule above, and
+spawn `security` for commands that need no credentials.
+
 ## Read lists, not objects
 
 Skilljar exposes courses, lessons and content items both per-object and as

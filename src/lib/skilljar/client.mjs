@@ -1,6 +1,7 @@
 import axios from 'axios';
 import dotenv from 'dotenv';
 import chalk from 'chalk';
+import { withKeychain } from '#lib/keychain.mjs';
 
 dotenv.config();
 
@@ -92,7 +93,7 @@ export function errorDetail(err) {
 }
 
 const V1_CREDENTIALS_HINT = [
-  'Check SKILLJAR_API_KEY in .env, and that outbound',
+  'Check SKILLJAR_API_KEY, and that outbound',
   'access to api.skilljar.com is permitted from here.'
 ];
 
@@ -130,9 +131,9 @@ export function failCleanly(err, context, { credentialsHint = V1_CREDENTIALS_HIN
  * server's Retry-After header.
  */
 export function createSkilljarClient() {
-  const apiKey = process.env.SKILLJAR_API_KEY;
+  const apiKey = withKeychain().SKILLJAR_API_KEY;
   if (!apiKey) {
-    throw new Error('SKILLJAR_API_KEY is not set. Add it to your .env file.');
+    throw new Error('SKILLJAR_API_KEY is not set. Store it in the macOS Keychain, or set it in the environment from a password manager.');
   }
 
   const client = axios.create({

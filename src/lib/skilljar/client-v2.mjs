@@ -13,6 +13,7 @@
  * trailing slashes: `client.get('/groups/')`, `client.get('/groups/{id}')`.
  */
 import axios from 'axios';
+import { withKeychain } from '#lib/keychain.mjs';
 import { attachRetries } from '#lib/skilljar/client.mjs';
 
 export const V2_BASE_URL = 'https://api.skilljar.com/v2';
@@ -32,7 +33,7 @@ export const V2_PAGE_SIZE = 100;
  * over here: the token request's body carries the client secret, and every
  * other request's Authorization header carries a live bearer token.
  */
-export function createSkilljarV2Client({ env = process.env, baseURL = V2_BASE_URL, now = Date.now } = {}) {
+export function createSkilljarV2Client({ env = withKeychain(), baseURL = V2_BASE_URL, now = Date.now } = {}) {
   const credentials = v2Credentials(env);
   const auth = attachRetries(axios.create({ baseURL }));
   let token = null;
@@ -86,7 +87,7 @@ function v2Credentials(env) {
   const clientId = env.SKILLJAR_CLIENT_ID;
   const clientSecret = env.SKILLJAR_CLIENT_SECRET;
   if (!clientId || !clientSecret) {
-    throw new Error('SKILLJAR_CLIENT_ID and SKILLJAR_CLIENT_SECRET are not set. Set them in the environment, from a password manager for example, or in a .env file.');
+    throw new Error('SKILLJAR_CLIENT_ID and SKILLJAR_CLIENT_SECRET are not set. Store them in the macOS Keychain, or set them in the environment from a password manager.');
   }
   return { clientId, clientSecret };
 }
@@ -106,7 +107,7 @@ async function postToken(auth, { clientId, clientSecret }) {
  *
  * @returns {Promise<{ accessToken: string, expiresIn: number }>}
  */
-export function fetchAccessToken({ env = process.env, baseURL = V2_BASE_URL } = {}) {
+export function fetchAccessToken({ env = withKeychain(), baseURL = V2_BASE_URL } = {}) {
   const credentials = v2Credentials(env);
   return postToken(attachRetries(axios.create({ baseURL })), credentials);
 }

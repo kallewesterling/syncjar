@@ -63,8 +63,9 @@ ${heading('Commands')}`);
   }
   console.log(`
 ${heading('Credentials')}
-  Read from .env in the current directory, then ${userEnv}.
-  A variable already set in the shell wins over both.
+  Read from the shell, then .env in the current directory, then ${userEnv},
+  then the macOS Keychain (service "syncjar"). The first one set wins.
+  Keep secrets in the Keychain or a password manager, not in a .env file.
   Outputs go to ${isCheckout ? 'the clone' : 'the current directory'}.`);
 }
 
