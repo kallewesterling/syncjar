@@ -14,6 +14,11 @@ and version scheme in `CLAUDE.md`.
 
 ## [Unreleased]
 
+### Changed
+
+- The README no longer repeats how to store credentials; it links to the
+  Configuration page, which is the one place that describes it.
+
 ## [2.3.0] - 2026-11-26
 
 ### Added
