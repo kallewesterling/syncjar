@@ -2,6 +2,7 @@
 title: Command reference
 nav_order: 7
 permalink: /reference/commands/
+description: Every Syncjar command and option, what credentials it needs, and whether it writes to Skilljar.
 ---
 
 # Command reference

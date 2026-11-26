@@ -2,6 +2,7 @@
 title: Settings
 parent: Course content
 nav_order: 5
+description: Push course, lesson, path and visibility settings back to Skilljar, and what isn't pushed.
 ---
 
 # Settings

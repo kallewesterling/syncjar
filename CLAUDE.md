@@ -91,6 +91,15 @@ that touch `docs/` build it without deploying.
 - **A command change is a docs change.** New options, scopes or behaviour go
   in the command's page and in `docs/reference/commands.md`, in the same PR.
 - `docs/plans/` holds working notes and is excluded from the build.
+- **Every page needs a `description`** in its front matter. After the
+  Jekyll build, `tools/llms-docs.mjs` writes `llms.txt` (an index, from
+  each page's title and description), `llms-full.txt` (every page) and a
+  plain-Markdown copy of each page at its source path. It rewrites
+  `{% link %}` tags and kramdown attributes, and fails the build on a
+  missing description or any Liquid it can't rewrite, so new Liquid
+  means a change there. It uses only Node built-ins, since the docs
+  workflow doesn't `npm ci`. The same script is in credjar; keep the two
+  in step.
 
 ## CRITICAL: never let a raw axios error reach the console
 

@@ -2,6 +2,7 @@
 title: Pushing
 parent: Course content
 nav_order: 3
+description: Push local course titles, lesson titles and HTML content to Skilljar, with a diff of each change.
 ---
 
 # Pushing

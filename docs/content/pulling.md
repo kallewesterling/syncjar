@@ -2,6 +2,7 @@
 title: Pulling
 parent: Course content
 nav_order: 1
+description: Pull courses, lessons, quizzes, slugs and learning paths from Skilljar into local files.
 ---
 
 # Pulling

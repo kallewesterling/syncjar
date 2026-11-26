@@ -3,6 +3,7 @@ title: Checks
 nav_order: 5
 has_children: true
 permalink: /checks/
+description: Read-only commands that tell you something before you act, and their exit codes.
 ---
 
 # Checks

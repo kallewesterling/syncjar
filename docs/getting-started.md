@@ -1,6 +1,7 @@
 ---
 title: Getting started
 nav_order: 2
+description: Install the syncjar command or run it from a clone, add your Skilljar credentials, and check the connection.
 ---
 
 # Getting started

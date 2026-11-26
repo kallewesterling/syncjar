@@ -3,6 +3,7 @@ title: Students
 nav_order: 6
 has_children: true
 permalink: /students/
+description: Commands for the people taking your courses, covering groups, enrollments and exports.
 ---
 
 # Students

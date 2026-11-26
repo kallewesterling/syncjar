@@ -8,10 +8,10 @@ name: docs
 on:
   pull_request:
     branches: [dev, main]
-    paths: ['docs/**', '.github/workflows/docs.yaml']
+    paths: ['docs/**', 'tools/llms-docs.mjs', '.github/workflows/docs.yaml']
   push:
     branches: [main]
-    paths: ['docs/**', '.github/workflows/docs.yaml']
+    paths: ['docs/**', 'tools/llms-docs.mjs', '.github/workflows/docs.yaml']
   workflow_dispatch:
 
 permissions:
@@ -34,6 +34,16 @@ jobs:
         with:
           source: ./docs
           destination: ./_site
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # The build runs in a container as root, so _site is root's.
+      - name: Add llms.txt and Markdown copies of the pages
+        run: |
+          sudo chown -R "$(id -u):$(id -g)" _site
+          node tools/llms-docs.mjs docs _site
 
       - uses: actions/upload-pages-artifact@v5
         if: github.event_name != 'pull_request'

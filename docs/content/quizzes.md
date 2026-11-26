@@ -2,6 +2,7 @@
 title: Quizzes
 parent: Course content
 nav_order: 4
+description: Create new quizzes from files and push edits to pulled ones with push:quizzes.
 ---
 
 # Quizzes
