@@ -2,6 +2,7 @@
 title: Exports
 parent: Students
 nav_order: 3
+description: Read-only CSV exports of students, enrollments, course analytics and activity.
 ---
 
 # Exports

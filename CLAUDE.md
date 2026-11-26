@@ -54,6 +54,20 @@ At that moment, and not before:
   and open a fresh empty `[Unreleased]` above it;
 - set `version` in `package.json` to match the tag.
 
+Both land in the commit the tag points at, because pushing the tag is what
+publishes the GitHub Release. `.github/workflows/release.yaml` creates it,
+titled `syncjar X.Y.Z`, with that version's `CHANGELOG.md` section, read at
+the tagged commit, as its notes. It fails rather than publish an empty
+Release if the section is missing. A tag alone does not appear under
+Releases: 2.1.0 to 2.3.0 were pushed before the workflow existed, and
+weren't Releases until they were backfilled on 2026-11-26. If the
+workflow fails, fix the changelog and rerun the job, or create the Release
+by hand:
+
+```bash
+gh release create vX.Y.Z --verify-tag --title "syncjar X.Y.Z" --notes-file <section>
+```
+
 `package.json` therefore lags `dev` on purpose: it records the last release,
 not the work in flight. Nothing had ever been tagged before 2.0.0 — including
 `1.0.0`, which exists only as a `CHANGELOG.md` heading — so treat the tag
@@ -77,6 +91,15 @@ that touch `docs/` build it without deploying.
 - **A command change is a docs change.** New options, scopes or behaviour go
   in the command's page and in `docs/reference/commands.md`, in the same PR.
 - `docs/plans/` holds working notes and is excluded from the build.
+- **Every page needs a `description`** in its front matter. After the
+  Jekyll build, `tools/llms-docs.mjs` writes `llms.txt` (an index, from
+  each page's title and description), `llms-full.txt` (every page) and a
+  plain-Markdown copy of each page at its source path. It rewrites
+  `{% link %}` tags and kramdown attributes, and fails the build on a
+  missing description or any Liquid it can't rewrite, so new Liquid
+  means a change there. It uses only Node built-ins, since the docs
+  workflow doesn't `npm ci`. The same script is in credjar; keep the two
+  in step.
 
 ## CRITICAL: never let a raw axios error reach the console
 

@@ -65,7 +65,8 @@ test('modules the tests import load without Skilljar credentials', () => {
   for (const mod of [
     ...lib,
     './src/commands/pull/paths.mjs',
-    './src/commands/sync/users.mjs'
+    './src/commands/sync/users.mjs',
+    './tools/llms-docs.mjs'
   ]) {
     const failure = importWithoutCredentials(mod);
     assert.equal(failure, null, `importing ${mod} without credentials failed:\n${failure}`);

@@ -2,6 +2,7 @@
 title: Who can see what (check:visibility)
 parent: Checks
 nav_order: 2
+description: Work out, per domain, who can see each published course and path.
 ---
 
 # Who can see what: `check:visibility`

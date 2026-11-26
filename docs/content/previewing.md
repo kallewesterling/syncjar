@@ -2,6 +2,7 @@
 title: Previewing
 parent: Course content
 nav_order: 2
+description: Build and serve a local preview of pulled courses, from a clone of the repository.
 ---
 
 # Previewing

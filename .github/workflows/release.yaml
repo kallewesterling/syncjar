@@ -1,0 +1,43 @@
+# Creates the GitHub Release for a pushed version tag.
+#
+# A tag on its own is not a Release: GitHub's Releases panel lists only tags
+# someone turned into one. Tags 2.1.0 to 2.3.0 were pushed without that step
+# and the panel showed 2.0.0 as latest for two months.
+#
+# The notes are the tag's own section of CHANGELOG.md, read at the tagged
+# commit. A tag whose section is missing or empty fails here rather than
+# publishing an empty Release: it means `[Unreleased]` was not promoted.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract the changelog section
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="$version" '
+            index($0, "## [" v "]") == 1 { found = 1; next }
+            found && /^## \[/ { exit }
+            found
+          ' CHANGELOG.md | sed -e '/./,$!d' > notes.md
+          if ! grep -q '[^[:space:]]' notes.md; then
+            echo "::error::CHANGELOG.md has no section for [$version] at $GITHUB_REF_NAME"
+            exit 1
+          fi
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --verify-tag \
+            --title "syncjar ${GITHUB_REF_NAME#v}" --notes-file notes.md

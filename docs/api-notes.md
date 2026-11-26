@@ -1,6 +1,7 @@
 ---
 title: Skilljar API notes
 nav_order: 9
+description: What the Skilljar API was observed to do, where it differs from or goes beyond its specification.
 ---
 
 # Skilljar API notes
