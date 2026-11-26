@@ -14,6 +14,8 @@ and version scheme in `CLAUDE.md`.
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-11-26
+
 ### Added
 
 - Credentials can come from the macOS Keychain. `SKILLJAR_API_KEY`,
