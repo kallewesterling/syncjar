@@ -14,6 +14,8 @@ and version scheme in `CLAUDE.md`.
 
 ## [Unreleased]
 
+## [2.3.1] - 2026-11-26
+
 ### Added
 
 - Pushing a version tag publishes its GitHub Release, with that version's
