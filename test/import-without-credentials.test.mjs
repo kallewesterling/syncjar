@@ -22,9 +22,12 @@ const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
  * and the test would pass for the very reason it is meant to catch. Bare
  * specifiers still resolve, since ESM resolves those from the importing
  * file's location rather than from cwd.
+ *
+ * The Keychain is switched off for the same reason: on a developer's Mac it
+ * would hand the child the very credentials this strips.
  */
 function importWithoutCredentials(relativeModule) {
-  const env = { ...process.env };
+  const env = { ...process.env, SYNCJAR_NO_KEYCHAIN: '1' };
   delete env.SKILLJAR_API_KEY;
   delete env.SKILLJAR_CLIENT_ID;
   delete env.SKILLJAR_CLIENT_SECRET;

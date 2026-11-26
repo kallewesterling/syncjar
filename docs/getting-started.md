@@ -95,18 +95,20 @@ You only need the ones for the commands you use;
 [Credentials]({{ site.baseurl }}{% link configuration.md %}#credentials) lists
 which commands need which.
 
-The safest place for them is a password manager, which supplies them to each
-command and leaves nothing on disk; see
-[Keeping credentials in a password manager]({{ site.baseurl }}{% link configuration.md %}#keeping-credentials-in-a-password-manager).
-Otherwise, for the global command, use a user-level file that only you can
-read:
+Don't put them in a `.env` file. On a Mac, store them in the Keychain, where
+Syncjar finds them by itself. Each command prompts for the value:
 
 ```bash
-mkdir -p ~/.config/syncjar
-touch ~/.config/syncjar/.env && chmod 600 ~/.config/syncjar/.env
+security add-generic-password -U -s syncjar -a SKILLJAR_API_KEY -w
+security add-generic-password -U -s syncjar -a SKILLJAR_CLIENT_ID -w
+security add-generic-password -U -s syncjar -a SKILLJAR_CLIENT_SECRET -w
 ```
 
-In a clone, a `.env` at the repository root works too, and is gitignored.
+Elsewhere, or for a prompt on every use, have a password manager such as
+1Password supply them to each command; see
+[Keeping credentials in a password manager]({{ site.baseurl }}{% link configuration.md %}#keeping-credentials-in-a-password-manager).
+`.env` files still work, but hold the secret in plain text where any program
+running as you can read it.
 
 If you have a v2 client, check what it can do:
 
