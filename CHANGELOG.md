@@ -20,6 +20,10 @@ and version scheme in `CLAUDE.md`.
   changelog section as the notes. Tags 2.1.0 to 2.3.0 had been pushed
   without one, so the repo's Releases panel still showed 2.0.0 as latest;
   they have been backfilled.
+- The docs site publishes [`llms.txt`](https://llmstxt.org/), an index for
+  LLMs and coding agents, with `llms-full.txt` holding every page and a
+  plain-Markdown copy of each page beside its HTML (`pushing.md` beside
+  `pushing.html`). Every page now has a `description`.
 
 ### Changed
 

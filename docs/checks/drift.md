@@ -2,6 +2,7 @@
 title: Dashboard edits (check:drift)
 parent: Checks
 nav_order: 1
+description: List lessons edited in the Skilljar dashboard since your last pull, before a push overwrites them.
 ---
 
 # Dashboard edits: `check:drift`

@@ -2,6 +2,7 @@
 title: Settings and links
 parent: Checks
 nav_order: 3
+description: Find courses and paths whose settings differ from the rest, and broken links in course content.
 ---
 
 # Settings and links

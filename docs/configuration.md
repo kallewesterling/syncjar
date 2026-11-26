@@ -1,6 +1,7 @@
 ---
 title: Configuration
 nav_order: 3
+description: Where Syncjar reads its settings from, the Skilljar credentials each command needs, and how to keep them out of files.
 ---
 
 # Configuration

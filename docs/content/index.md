@@ -3,6 +3,7 @@ title: Course content
 nav_order: 4
 has_children: true
 permalink: /content/
+description: The content workflow, a loop of pulling Skilljar into files, editing, previewing and pushing back.
 ---
 
 # Course content

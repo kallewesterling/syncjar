@@ -2,6 +2,7 @@
 title: Groups and access
 parent: Students
 nav_order: 1
+description: Add and remove group members, auto-add email domains, audit a group against a roster, and revoke access.
 ---
 
 # Groups and access

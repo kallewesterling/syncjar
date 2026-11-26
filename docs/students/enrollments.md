@@ -2,6 +2,7 @@
 title: Enrollments
 parent: Students
 nav_order: 2
+description: Enroll existing students in a course by email, and deactivate their enrollments.
 ---
 
 # Enrollments

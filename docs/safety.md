@@ -1,6 +1,7 @@
 ---
 title: Safety and data handling
 nav_order: 8
+description: How Syncjar shows, confirms and checks writes, protects credentials, and handles learner data.
 ---
 
 # Safety and data handling
